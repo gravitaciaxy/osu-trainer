@@ -80,8 +80,11 @@ python trainer.py --help
 
 ## Свой сайт
 
-Тот же код работает как сайт: `python ui.py --server --public-url https://твой.домен`
-(нужен только Python). Готовые systemd-юнит, конфиг nginx и скрипт выкладки — в [deploy/](deploy/README.md).
+Тот же код работает как сайт (нужен только Python). На сервере с nginx — одна команда от root:
+```sh
+curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/server-install.sh | sh
+```
+Подробности, HTTPS и обновление — в [deploy/](deploy/README.md).
 
 ## Если что-то не так
 
@@ -139,7 +142,9 @@ Maps: osu.direct, catboy.best, `.osu` files from osu.ppy.sh (rate-limited). Tour
 
 ## Self-hosting
 
-`python ui.py --server --public-url https://your.domain` runs the website mode (Python only).
-systemd unit, nginx config and deploy script are in [deploy/](deploy/README.md).
+`python ui.py --server --public-url https://your.domain` runs the website mode (Python only). On a
+server with nginx, one command as root sets everything up:
+`curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/server-install.sh | sh`
+— see [deploy/](deploy/README.md).
 
 Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd. MIT licensed.

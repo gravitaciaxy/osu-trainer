@@ -2,33 +2,48 @@
 
 Сайт работает в «серверном режиме»: подбор карт, анализ и турнирная база крутятся на сервере,
 пользователи скачивают карты по ссылкам, а в игру коллекцию кладёт их локальный osu!trainer
-(кнопка «Добавить в игру»). Нужен только Python 3.9+ — ни Node.js, ни доступа к игре не нужно.
+(кнопка «Добавить в игру»). Серверу нужен только Python 3.9+ — ни Node.js, ни доступа к игре.
 
-## Первый раз
+## Установка одной командой (рекомендуется)
 
-1. DNS: A-запись `osu` -> IP сервера (в Cloudflare - режим «DNS only», серое облако).
-2. Код и сервис: `sh deploy/deploy.sh vps` (создаст пользователя `osutrainer`, положит код в
-   `/opt/osu-trainer`, поставит и запустит systemd-юнит на `127.0.0.1:3002`).
-3. nginx:
-   ```sh
-   sudo cp nginx-osu.conf /etc/nginx/sites-available/osu
-   sudo ln -s /etc/nginx/sites-available/osu /etc/nginx/sites-enabled/osu
-   sudo nginx -t && sudo systemctl reload nginx
-   sudo certbot --nginx -d osu.gravitacia.art
-   ```
-   Другие сайты на сервере конфиг не трогает: у него свой `server_name` и свой порт.
-4. (по желанию) прогреть базу: заранее узнать звёзды всех турнирных карт, чтобы подбор по
-   турнирам был мгновенным. Около 6 часов в фоне, один раз:
-   ```sh
-   sudo -u osutrainer sh -c 'cd /opt/osu-trainer && nohup python3 pools.py warm > cache/warm.log 2>&1 &'
-   ```
+На сервере от root (по SSH или в консоли панели хостинга):
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/server-install.sh | sh
+```
+
+Скрипт:
+- берёт код с GitHub и кладёт в `/opt/osu-trainer` (кэш, база и подборки при обновлении остаются);
+- создаёт системного пользователя `osutrainer` без входа в систему;
+- ставит и запускает systemd-юнит `osu-trainer` на `127.0.0.1:3002` с ограничениями
+  (писать можно только в `cache/`, не больше 450 МБ памяти);
+- если есть nginx и файла `sites-available/osu` ещё нет — создаёт его, проверяет `nginx -t` и
+  перезагружает nginx; при ошибке убирает свой файл, чужие сайты не трогает. `include
+  snippets/security-headers.conf` остаётся в каждом `location`, если такой файл есть на сервере.
+
+Затем один раз включить HTTPS (нужна A-запись домена на сервер, в Cloudflare — «DNS only»):
+
+```sh
+certbot --nginx -d osu.gravitacia.art
+```
+
+Другой домен или порт: `DOMAIN=osu.example.com PORT=3005 sh server-install.sh`.
 
 ## Обновление
 
-`sh deploy/deploy.sh vps` — код обновится, кэш и сохранённые подборки останутся.
+Та же команда. Код обновится, кэш и сохранённые подборки останутся, nginx-конфиг не перезапишется.
 
 Турнирную базу обновлять раз в пару недель:
 `sudo -u osutrainer sh -c 'cd /opt/osu-trainer && python3 pools.py build'`
+
+По желанию — прогреть базу: заранее узнать звёзды всех турнирных карт, чтобы подбор по турнирам
+был мгновенным (около 6 часов в фоне, один раз):
+`sudo -u osutrainer sh -c 'cd /opt/osu-trainer && nohup python3 pools.py warm > cache/warm.log 2>&1 &'`
+
+## Выкладка со своего компьютера
+
+`sh deploy/deploy.sh vps` — копирует код из локальной папки по SSH (нужен алиас `vps` в
+`~/.ssh/config`) и перезапускает юнит. nginx-конфиг ставится вручную из `deploy/nginx-osu.conf`.
 
 ## Ограничения сайта
 

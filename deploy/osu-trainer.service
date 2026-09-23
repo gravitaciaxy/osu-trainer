@@ -14,6 +14,7 @@ ExecStart=/usr/bin/python3 /opt/osu-trainer/ui.py --server --port 3002 --public-
 Restart=on-failure
 RestartSec=5
 Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
 MemoryMax=450M
 CPUQuota=80%
 NoNewPrivileges=true

@@ -369,8 +369,9 @@ def pick_tournament(a, stars, log):
 
 def prepare(a):
     set_lang(getattr(a, "lang", "ru"))
-    for d in (CACHE, DL):
-        os.makedirs(d, exist_ok=True)
+    os.makedirs(CACHE, exist_ok=True)
+    if not getattr(a, "server", False):      # на сервере карты не скачиваются, папка только для чтения
+        os.makedirs(DL, exist_ok=True)
     a.stars_range = rng(a.stars)
     a.bpm = rng(a.bpm, (0, 10000))
     a.length = rng(a.length, (0, 100000))
