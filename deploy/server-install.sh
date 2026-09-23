@@ -52,7 +52,7 @@ systemctl enable osu-trainer >/dev/null 2>&1
 systemctl restart osu-trainer
 
 ok=""
-for i in 1 2 3 4 5 6 7 8 9 10; do
+for i in $(seq 1 30); do
     if curl -fsS "http://127.0.0.1:$PORT/api/ping" >/dev/null 2>&1; then ok=1; break; fi
     sleep 1
 done

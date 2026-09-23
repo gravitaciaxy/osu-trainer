@@ -456,7 +456,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 class Server(socketserver.ThreadingMixIn, http.server.HTTPServer):
     daemon_threads = True
-    allow_reuse_address = False
+    # Linux/macOS: быстро занять порт после перезапуска (старые соединения в TIME_WAIT).
+    # Windows: не включаем - там SO_REUSEADDR позволил бы другой программе перехватить порт.
+    allow_reuse_address = os.name != "nt"
 
 
 def main():
