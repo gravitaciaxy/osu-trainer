@@ -345,9 +345,10 @@
     <div class="card">
       <h2><span data-i18n="results"></span><span class="sub" id="rescount"></span></h2>
       <div class="shareline" id="shareline" hidden>
-        <button class="btn go small" onclick="addToGame()" data-i18n="add_to_game" data-tip-key="tip_add"></button>
-        <input type="text" id="sharelink" readonly>
-        <button class="btn small" onclick="copyText($('sharelink').value, this)" data-i18n="copy_link"></button>
+        <button class="btn go small" id="btn-add" onclick="addToGame()" data-i18n="add_to_game" disabled></button>
+        <input type="text" id="sharelink" readonly hidden>
+        <button class="btn small" id="btn-copy" onclick="copyText($('sharelink').value, this)" data-i18n="copy_link" hidden></button>
+        <span class="muted" id="addhint"></span>
       </div>
       <div class="tablewrap"><table id="results"><tbody></tbody></table></div>
       <div class="empty" id="noresults" data-i18n="no_results"></div>
@@ -497,7 +498,8 @@ ru: {
   tip_contact:'Необязательно. Liquipedia просит указывать в запросах к ней контакт (почту или Discord), чтобы написать при проблемах.',
   tip_project:'Необязательно. Ссылка на страницу проекта (например, на GitHub) — тоже уходит в запросы к Liquipedia.',
   tip_pools:'Своя база турнирных пулов из osu!wiki и Liquipedia. Обновляй раз в пару недель, чтобы подтянуть новые турниры.',
-  tip_add:'Кладёт подборку в игру через osu!trainer на твоём компьютере. Если его нет — покажем, как поставить одной командой.'
+  tip_add:'Кладёт подборку в игру через osu!trainer на твоём компьютере. Если его нет — покажем, как поставить одной командой.',
+  add_wait:'сначала подбери карты кнопкой «Подобрать карты»'
 },
 en: {
   settings:'Settings', open_settings:'Open settings', tab_skill:'Skills', tab_tour:'Tournament pools',
@@ -591,7 +593,8 @@ en: {
   tip_contact:'Optional. Liquipedia asks API users to include contact info (email or Discord) so they can reach out about problems.',
   tip_project:'Optional. A link to the project page (e.g. GitHub) — also sent in requests to Liquipedia.',
   tip_pools:'Own database of tournament pools from osu!wiki and Liquipedia. Update every couple of weeks to pick up new tournaments.',
-  tip_add:'Puts the selection into your game through osu!trainer on your computer. If it is not installed, you will see how to install it with one command.'
+  tip_add:'Puts the selection into your game through osu!trainer on your computer. If it is not installed, you will see how to install it with one command.',
+  add_wait:'find maps first with the "Find maps" button'
 }};
 
 /* ============================== состояние ============================== */
@@ -681,6 +684,7 @@ function applyLang(){
   rangesRefresh();
   if (DATA) render();
   if (IMPORT && IMPORT.preview) showImport();
+  if (DATA) updateShare();
 }
 
 /* ============================== подсказки ============================== */
@@ -888,7 +892,7 @@ async function run(dry){
   const p = params(dry); if (!p) return;
   store(); LASTRESULT = null;
   $('log').textContent = ''; $('results').querySelector('tbody').innerHTML = ''; $('rescount').textContent = '';
-  $('noresults').hidden = false; $('shareline').hidden = true;
+  $('noresults').hidden = false; updateShare();
   setState(t('working'), '');
   try { const r = await api('/api/run', p); follow(r.id); }
   catch(e){ setState(e.status === 429 ? t('too_many') : e.message, 'err'); }
@@ -937,13 +941,21 @@ function showResults(res){
   $('noresults').hidden = res.picked.length > 0;
   $('rescount').textContent = (res.name ? ' · ' + res.name : '') + t('res_count', {m:mapsText(res.picked.length)}) + (res.downloaded ? t('res_dl', {n:res.downloaded}) : '');
   if (SITE && res.share){
-    $('shareline').hidden = false;
     $('sharelink').value = location.origin + '/s/' + res.share;
     history.replaceState(null, '', '/?share=' + res.share);
   }
+  updateShare();
 }
 
 /* ============================== сайт: добавить в игру ============================== */
+function updateShare(){
+  const has = !!(LASTRESULT && LASTRESULT.share);
+  $('shareline').hidden = !SITE;
+  $('btn-add').disabled = !has;
+  $('btn-add').dataset.tip = t('tip_add');
+  $('sharelink').hidden = $('btn-copy').hidden = !has;
+  $('addhint').textContent = has ? '' : t('add_wait');
+}
 async function localAppRunning(){
   try {
     const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 1500);
@@ -1031,6 +1043,7 @@ async function load(){
   if (SITE){ $('banner').hidden = false; $('banner').className = 'banner info'; $('bannertext').textContent = t('banner_site'); $('bannerbtn').hidden = true; }
   if (SITE !== wasSite) applyLang();
   render();
+  updateShare();
 }
 
 restore();
