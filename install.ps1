@@ -1,10 +1,13 @@
-# osu!trainer - установка одной командой (Windows, PowerShell):
+# osu!trainer - one-line installer for Windows (PowerShell):
 #
 #   irm https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.ps1 | iex
 #
-# Ставит программу в %LOCALAPPDATA%\osu-trainer. Если в системе нет Python 3.9+ или Node.js 18+,
-# скачивает их портативные версии в папку программы (в систему ничего не устанавливается).
-# Повторный запуск обновляет программу, настройки и кэш сохраняются.
+# Installs the app to %LOCALAPPDATA%\osu-trainer. If Python 3.9+ or Node.js 18+ is missing, portable
+# copies are downloaded into the app folder (nothing is installed system-wide).
+# Running it again updates the app; settings and cache are kept.
+#
+# Keep this file pure ASCII: Windows PowerShell 5.1 reads BOM-less script files in the ANSI code
+# page, and a UTF-8 BOM would break "irm | iex" (irm keeps U+FEFF at the start of the string).
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -12,7 +15,7 @@ $ProgressPreference = 'SilentlyContinue'
 
 $Repo = 'gravitaciaxy/osu-trainer'
 $Dir = Join-Path $env:LOCALAPPDATA 'osu-trainer'
-# для проверки установщика: своя папка, свой адрес архива, принудительно портативные Python/Node
+# for testing the installer: custom folder, custom archive URL, forced portable Python/Node
 if ($env:OSU_TRAINER_DIR) { $Dir = $env:OSU_TRAINER_DIR }
 $Force = ($env:OSU_TRAINER_FORCE_PORTABLE -eq '1')
 $PyVersion = '3.12.10'
@@ -25,7 +28,7 @@ function Get-File($urls, $out) {
     foreach ($u in $urls) {
         try { Invoke-WebRequest -Uri $u -OutFile $out -UseBasicParsing; return $u } catch { }
     }
-    throw "Не удалось скачать: $($urls -join ', ')"
+    throw "Download failed: $($urls -join ', ')"
 }
 
 function Test-Python($exe, $extra) {
@@ -45,7 +48,7 @@ function Test-Node {
 }
 
 try {
-    Say 'Скачиваю программу...'
+    Say 'Downloading the app...'
     $zip = Join-Path $Tmp 'app.zip'
     $sources = @("https://github.com/$Repo/releases/latest/download/osu-trainer.zip",
                  "https://github.com/$Repo/archive/refs/heads/main.zip")
@@ -54,7 +57,7 @@ try {
     Expand-Archive -Path $zip -DestinationPath (Join-Path $Tmp 'app') -Force
     $root = Get-ChildItem (Join-Path $Tmp 'app') -Directory | Select-Object -First 1
     New-Item -ItemType Directory -Force -Path $Dir | Out-Null
-    # файлы программы заменяются, а cache, backups, downloads, runtime и config.json остаются
+    # app files are replaced; cache, backups, downloads, runtime and config.json are kept
     Get-ChildItem $root.FullName -Force | ForEach-Object {
         Copy-Item $_.FullName -Destination $Dir -Recurse -Force
     }
@@ -62,7 +65,7 @@ try {
     $pyDir = Join-Path $Dir 'runtime\python'
     if (-not (Test-Path (Join-Path $pyDir 'python.exe'))) {
         if ($Force -or -not ((Test-Python 'python' @()) -or (Test-Python 'py' @('-3')))) {
-            Say "Python не найден - скачиваю портативный Python $PyVersion (только для osu!trainer)..."
+            Say "Python not found - downloading portable Python $PyVersion (for osu!trainer only)..."
             $pz = Join-Path $Tmp 'python.zip'
             Get-File @("https://www.python.org/ftp/python/$PyVersion/python-$PyVersion-embed-amd64.zip") $pz | Out-Null
             Expand-Archive $pz -DestinationPath $pyDir -Force
@@ -71,7 +74,7 @@ try {
 
     $nodeDir = Join-Path $Dir 'runtime\node'
     if (-not (Test-Path (Join-Path $nodeDir 'node.exe')) -and ($Force -or -not (Test-Node))) {
-        Say 'Node.js не найден - скачиваю портативный Node.js LTS (только для osu!trainer)...'
+        Say 'Node.js not found - downloading portable Node.js LTS (for osu!trainer only)...'
         $index = Invoke-RestMethod 'https://nodejs.org/dist/index.json'
         $lts = $index | Where-Object { $_.lts -and ($_.files -contains 'win-x64-zip') } | Select-Object -First 1
         $name = "node-$($lts.version)-win-x64"
@@ -88,16 +91,16 @@ try {
         $env:Path = "$nodeDir;$env:Path"
         $npm = Join-Path $nodeDir 'npm.cmd'
     }
-    Say 'Ставлю модуль для работы с базой osu! (realm)...'
+    Say 'Installing the osu! database module (realm)...'
     Push-Location $Dir
     try {
         & $npm ci --no-audit --no-fund --loglevel=error
         if ($LASTEXITCODE -ne 0) { & $npm install --no-audit --no-fund --loglevel=error }
-        if ($LASTEXITCODE -ne 0) { throw 'npm не смог установить зависимости' }
+        if ($LASTEXITCODE -ne 0) { throw 'npm could not install the dependencies' }
     } finally { Pop-Location }
 
     if ($env:OSU_TRAINER_NO_SHORTCUTS -ne '1') {
-        Say 'Создаю ярлыки в меню «Пуск» и на рабочем столе...'
+        Say 'Creating Start menu and desktop shortcuts...'
         $shell = New-Object -ComObject WScript.Shell
         $icon = Join-Path $env:LOCALAPPDATA 'osulazer\current\osu!.exe'
         foreach ($folder in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
@@ -109,13 +112,13 @@ try {
         }
     }
 
-    Say "Готово! Программа в $Dir"
+    Say "Done! Installed to $Dir"
     if ($env:OSU_TRAINER_NO_START -ne '1') {
         Start-Process -FilePath (Join-Path $Dir 'start.bat') -WorkingDirectory $Dir
     }
 }
 catch {
-    Write-Host "[osu!trainer] Ошибка установки: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[osu!trainer] Installation failed: $($_.Exception.Message)" -ForegroundColor Red
 }
 finally {
     Remove-Item $Tmp -Recurse -Force -ErrorAction SilentlyContinue

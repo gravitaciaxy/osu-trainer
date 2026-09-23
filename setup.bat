@@ -2,8 +2,8 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-echo === osu!trainer: установка зависимостей ===
-echo (проще всего поставить программу одной командой из README - она сама всё скачает)
+echo === osu!trainer: installing dependencies ===
+echo (easiest: the one-line install command from the README downloads everything itself)
 
 set "NPM=npm"
 if exist "%~dp0runtime\node\npm.cmd" (
@@ -17,16 +17,16 @@ node --version >nul 2>nul || goto nonode
 call "%NPM%" ci --no-audit --no-fund --loglevel=error || call "%NPM%" install --no-audit --no-fund --loglevel=error || goto fail
 
 echo.
-echo Готово! Запускай start.bat
+echo Done! Now run start.bat
 pause
 exit /b 0
 
 :nonode
-echo Не найден Node.js 18+. Установи LTS-версию: https://nodejs.org/ и запусти setup.bat снова.
+echo Node.js 18+ not found. Install the LTS version from https://nodejs.org/ and run setup.bat again.
 pause
 exit /b 1
 
 :fail
-echo Установка не удалась - смотри сообщения выше.
+echo Installation failed - see the messages above.
 pause
 exit /b 1

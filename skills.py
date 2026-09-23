@@ -14,16 +14,16 @@ def sc(v, lo, hi):
     return clamp((v - lo) / (hi - lo))
 
 
-# понятные названия метрик для пояснений «чем отличается»
+# понятные названия метрик для пояснений «чем отличается»: (ru, en, es)
 FEATURE_NAMES = {
-    "bpm": ("BPM", "BPM"), "nps": ("плотность нот", "note density"),
-    "nps_max": ("пиковая плотность", "peak density"), "stream_ratio": ("доля streams", "stream share"),
-    "stream_bpm": ("BPM streams", "stream BPM"), "max_run": ("длина streams", "stream length"),
-    "switch_ratio": ("смены ритма", "rhythm changes"), "odd_ratio": ("необычные деления", "unusual snaps"),
-    "rhythm_entropy": ("разнообразие ритма", "rhythm variety"), "sv_var": ("SV", "SV"),
-    "slider_ratio": ("доля sliders", "slider share"), "slider_anchors": ("форма sliders", "slider shapes"),
-    "aim_velocity": ("скорость курсора", "cursor speed"), "aim_spacing": ("spacing", "spacing"),
-    "cs": ("CS", "CS"), "ar": ("AR", "AR"),
+    "bpm": ("BPM", "BPM", "BPM"), "nps": ("плотность нот", "note density", "densidad de notas"),
+    "nps_max": ("пиковая плотность", "peak density", "densidad máxima"), "stream_ratio": ("доля streams", "stream share", "proporción de streams"),
+    "stream_bpm": ("BPM streams", "stream BPM", "BPM de streams"), "max_run": ("длина streams", "stream length", "longitud de streams"),
+    "switch_ratio": ("смены ритма", "rhythm changes", "cambios de ritmo"), "odd_ratio": ("необычные деления", "unusual snaps", "snaps inusuales"),
+    "rhythm_entropy": ("разнообразие ритма", "rhythm variety", "variedad rítmica"), "sv_var": ("SV", "SV", "SV"),
+    "slider_ratio": ("доля sliders", "slider share", "proporción de sliders"), "slider_anchors": ("форма sliders", "slider shapes", "forma de los sliders"),
+    "aim_velocity": ("скорость курсора", "cursor speed", "velocidad del cursor"), "aim_spacing": ("spacing", "spacing", "spacing"),
+    "cs": ("CS", "CS", "CS"), "ar": ("AR", "AR", "AR"),
 }
 
 
@@ -94,12 +94,13 @@ def _accuracy(m):
     return s, _("OD %.1f, %.0f BPM, мало streams", m["od"], m["bpm"])
 
 
-# Названия навыков - как их называют игроки (по-английски) в обоих языках интерфейса.
+# Названия навыков - как их называют игроки (по-английски) во всех языках интерфейса.
 SKILLS = {
     "streams": dict(
         title="Streams", title_en="Streams",
         desc="Длинные цепочки нот на 1/4. Учитывается доля нот в streams, их BPM и длина самых длинных цепочек.",
         desc_en="Long 1/4 chains. Scored by the share of notes in streams, stream BPM and the longest runs.",
+        desc_es="Cadenas largas de notas a 1/4. Se valora la proporción de notas en streams, su BPM y la longitud de las rachas más largas.",
         aliases=["stream", "стрим", "стримы"],
         queries=["stream", "streams", "deathstream", "stamina stream", "high bpm stream"],
         score=_streams, min_score=55),
@@ -107,6 +108,7 @@ SKILLS = {
         title="Jumps / aim", title_en="Jumps / aim",
         desc="Большой spacing на 1/2 и 1/1: как далеко и как быстро нужно вести курсор.",
         desc_en="Wide spacing on 1/2 and 1/1: how far and how fast the cursor has to travel.",
+        desc_es="Spacing amplio a 1/2 y 1/1: cuánto y qué tan rápido hay que mover el cursor.",
         aliases=["jump", "aim", "аим", "джамп", "джампы", "прыжки"],
         queries=["jump", "jumps", "spaced", "aim", "jump aim", "wide aim"],
         score=_jumps, min_score=55),
@@ -114,6 +116,7 @@ SKILLS = {
         title="Jumpstreams", title_en="Jumpstreams",
         desc="Streams с большим расстоянием между нотами — aim прямо внутри streams.",
         desc_en="Streams with large spacing between notes — aiming while streaming.",
+        desc_es="Streams con mucha distancia entre notas: aim dentro de los propios streams.",
         aliases=["js", "джампстрим"],
         queries=["jumpstream", "jump stream", "stream jump", "alt jump"],
         score=_jumpstream, min_score=55),
@@ -121,6 +124,7 @@ SKILLS = {
         title="Speed / bursts", title_en="Speed / bursts",
         desc="Пиковая плотность нот и короткие быстрые bursts на высоком BPM.",
         desc_en="Peak note density and fast short bursts at high BPM.",
+        desc_es="Densidad máxima de notas y bursts cortos y rápidos a BPM alto.",
         aliases=["скорость", "спид", "burst", "бёрсты"],
         queries=["speed", "burst", "fast", "spam", "high bpm"],
         score=_speed, min_score=55),
@@ -128,6 +132,7 @@ SKILLS = {
         title="Stamina", title_en="Stamina",
         desc="Длинные карты с большой долей streams и высокой средней плотностью нот.",
         desc_en="Long maps with a high share of streams and high average density.",
+        desc_es="Mapas largos con mucha proporción de streams y alta densidad media de notas.",
         aliases=["стамина", "выносливость", "marathon"],
         queries=["stamina", "marathon", "endurance stream", "long stream"],
         score=_stamina, min_score=55),
@@ -135,6 +140,7 @@ SKILLS = {
         title="Tech", title_en="Tech",
         desc="Резкие смены скорости sliders (SV), нестандартные деления ритма (1/3, 1/6), сложные формы sliders.",
         desc_en="Slider velocity changes, unusual snaps (1/3, 1/6), complex slider shapes.",
+        desc_es="Cambios bruscos de velocidad de los sliders (SV), divisiones de ritmo poco comunes (1/3, 1/6) y sliders de formas complejas.",
         aliases=["технические", "тех", "technical", "sv"],
         queries=["tech", "technical", "gimmick", "sv", "slider velocity"],
         score=_tech, min_score=50),
@@ -142,6 +148,7 @@ SKILLS = {
         title="Finger control", title_en="Finger control",
         desc="Частые смены ритма: bursts, триоли, чередование 1/2 и 1/4 — нужен точный контроль пальцев.",
         desc_en="Frequent rhythm changes: bursts, triplets, 1/2 and 1/4 switching — needs precise finger control.",
+        desc_es="Cambios de ritmo frecuentes: bursts, tresillos, alternancia de 1/2 y 1/4. Exige un control preciso de los dedos.",
         aliases=["fc", "фингер", "фингерконтроль", "finger control"],
         queries=["finger control", "fingercontrol", "rhythm complex", "polyrhythm"],
         score=_fingercontrol, min_score=50),
@@ -149,6 +156,7 @@ SKILLS = {
         title="Reading", title_en="Reading",
         desc="Низкий AR и высокая плотность: карту трудно прочитать, а не нажать.",
         desc_en="Low AR and high density: hard to read rather than hard to hit.",
+        desc_es="AR bajo y alta densidad: el mapa es difícil de leer más que de acertar.",
         aliases=["ридинг", "чтение", "low ar"],
         queries=["reading", "low ar", "overlap", "hidden practice"],
         score=_reading, min_score=45),
@@ -156,6 +164,7 @@ SKILLS = {
         title="Precision", title_en="Precision",
         desc="Маленькие круги (высокий CS) — точность попадания курсором.",
         desc_en="Small circles (high CS) — cursor precision.",
+        desc_es="Círculos pequeños (CS alto): precisión al apuntar con el cursor.",
         aliases=["точность", "прецижн", "cs"],
         queries=["precision", "small circles", "high cs"],
         score=_precision, min_score=45),
@@ -163,6 +172,7 @@ SKILLS = {
         title="Flow / sliders", title_en="Flow / sliders",
         desc="Много sliders и плавное движение курсора при небольшом spacing.",
         desc_en="Lots of sliders and smooth movement with modest spacing.",
+        desc_es="Muchos sliders y movimiento fluido del cursor con poco spacing.",
         aliases=["флоу", "слайдеры", "sliders"],
         queries=["flow", "flow aim", "slider", "sliders"],
         score=_flow, min_score=45),
@@ -170,14 +180,15 @@ SKILLS = {
         title="Accuracy", title_en="Accuracy",
         desc="Высокий OD и ровный ритм без streams — тренировка точности нажатий.",
         desc_en="High OD and steady rhythm without streams — hit timing practice.",
+        desc_es="OD alto y ritmo estable sin streams: práctica de precisión al pulsar.",
         aliases=["акк", "acc", "аккураси", "точность нажатий"],
         queries=["accuracy", "acc practice", "consistency"],
         score=_accuracy, min_score=45),
 }
 
 
-def title(cfg, lang="ru"):
-    return cfg["title_en"] if str(lang).startswith("en") else cfg["title"]
+def title(cfg, lang="en"):
+    return cfg["title"] if str(lang).startswith("ru") else cfg["title_en"]
 
 
 def resolve(name):
@@ -235,7 +246,7 @@ def profile_scorer(profile):
         value = 100.0 / (1.0 + dist * dist * 0.55)
         top = sorted(((abs(m[k] - profile[k]) / s * w, k)
                       for k, (s, w) in PROFILE_FEATURES.items()), reverse=True)[:2]
-        idx = 1 if get_lang() == "en" else 0
+        idx = {"ru": 0, "en": 1, "es": 2}.get(get_lang(), 1)
         names = ", ".join(FEATURE_NAMES[k][idx] for _v, k in top)
         return value, _("похожесть %.0f%% (отличается: %s)", value, names)
     return score

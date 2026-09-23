@@ -233,7 +233,7 @@ def run_import(site, sid, lang, name_override=None):
 
 def refresh_pools(params):
     def target(job):
-        i18n.set_lang(params.get("lang", "ru"))
+        i18n.set_lang(params.get("lang", "en"))
         pools.build(force=True, log=job.log)
         return {"ok": True}
     return new_job("pools", target)
@@ -267,9 +267,10 @@ def init_data(lang):
                     updated=time.strftime("%Y-%m-%d", time.localtime(os.path.getmtime(pools.POOLS_JSON))))
     data = dict(
         mode=MODE, version=config.VERSION, site=config.SITE_URL, install=install_commands(),
-        skills=[dict(key=k, title=v["title"], title_en=v["title_en"], desc=v["desc"], desc_en=v["desc_en"])
+        skills=[dict(key=k, title=v["title"], title_en=v["title_en"], desc=v["desc"], desc_en=v["desc_en"],
+                     desc_es=v["desc_es"])
                 for k, v in skills.SKILLS.items()],
-        genres=[dict(id=k, ru=v[0], en=v[1]) for k, v in trainer.GENRES.items()],
+        genres=[dict(id=k, ru=v[0], en=v[1], es=v[2]) for k, v in trainer.GENRES.items()],
         pool=pool, collections=[], collections_error=None, env=None,
     )
     if MODE == "local":
@@ -366,7 +367,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 return
         if url.path == "/api/init":
-            return self._send(200, init_data(q.get("lang", config.load().get("language", "ru"))))
+            return self._send(200, init_data(q.get("lang", config.load().get("language", "en"))))
         if url.path == "/api/job":
             job = JOBS.get(q.get("id", ""))
             if not job:
@@ -428,7 +429,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return self._send(200, {"env": environment()})
         if path == "/api/collection/delete":
             try:
-                i18n.set_lang(body.get("lang", "ru"))
+                i18n.set_lang(body.get("lang", "en"))
                 trainer.backup_realm()
                 trainer.realm_cmd("remove", str(body["name"]))
                 return self._send(200, {"ok": True})
@@ -436,7 +437,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send(500, {"error": str(e)})
         if path == "/api/import/preview":
             try:
-                i18n.set_lang(body.get("lang", "ru"))
+                i18n.set_lang(body.get("lang", "en"))
                 name, maps = fetch_remote_share(body.get("site"), body.get("id"))
                 return self._send(200, {"name": name, "count": len(maps), "maps": maps[:200]})
             except Exception as e:
@@ -445,7 +446,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
             site = allowed_site(body.get("site"))
             if not site:
                 return self._send(400, {"error": "site not allowed"})
-            job = run_import(site, str(body.get("id", "")), body.get("lang", "ru"),
+            job = run_import(site, str(body.get("id", "")), body.get("lang", "en"),
                              str(body.get("name") or "")[:100] or None)
             return self._send(200, {"id": job.id})
         return self._send(404, {"error": "not found"})

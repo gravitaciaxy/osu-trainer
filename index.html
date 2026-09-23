@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="ru">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>osu!trainer</title>
-<meta name="description" content="Подбор карт osu! по навыку, похожести и турнирным пулам с готовой коллекцией в osu!lazer">
+<meta name="description" content="Pick osu! maps by skill, by similarity to maps you like or from real tournament pools, and get a ready osu!lazer collection">
 <style>
   :root{
     --bg:#161214; --panel:#221b1f; --panel2:#2c2328; --line:#3b2f36; --line2:#4a3b44;
@@ -167,6 +167,11 @@
   .modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:12px;width:100%;max-width:640px;padding:18px}
   .modal h3{margin:0 0 6px;font-size:16px}
   .modal p{color:var(--dim);margin:6px 0 12px;font-size:13px}
+  .guide h4{margin:16px 0 6px;font-size:13px;color:var(--text)}
+  .guide ol,.guide ul{margin:6px 0 10px;padding-left:20px;color:var(--dim);font-size:13px}
+  .guide li{margin:4px 0}
+  .guide b{color:var(--text)}
+  .guide code:not(.cmd){font:12px Consolas,monospace;color:#e8dce2;background:#110d0f;padding:1px 5px;border-radius:4px}
   .env{list-style:none;padding:0;margin:8px 0 0;font-size:12.5px}
   .env li{padding:4px 0;display:flex;gap:8px}
   .env .ok{color:var(--ok)} .env .bad{color:var(--err)} .env .warn{color:var(--warn)}
@@ -186,13 +191,15 @@
   <h1>osu!<b>trainer</b><small id="version"></small></h1>
   <div class="info" id="info">…</div>
   <div class="hbtns">
-    <div class="seg" id="langseg"><button data-lang="ru">RU</button><button data-lang="en">EN</button></div>
+    <div class="seg" id="langseg"><button data-lang="en">EN</button><button data-lang="es">ES</button><button data-lang="ru">RU</button></div>
+    <button class="iconbtn" onclick="openGuide()" data-i18n="guide"></button>
     <button class="iconbtn" id="btn-settings" onclick="openSettings()" data-i18n="settings" hidden></button>
   </div>
 </header>
 
 <div class="banner" id="banner" hidden><span id="bannertext"></span>
-  <button class="iconbtn" id="bannerbtn" onclick="openSettings()" data-i18n="open_settings"></button></div>
+  <button class="iconbtn" id="bannerbtn" onclick="openSettings()" data-i18n="open_settings"></button>
+  <button class="iconbtn" id="bannerguide" onclick="openGuide()" data-i18n="how_it_works" hidden></button></div>
 
 <!-- подборка с сайта, пришедшая в локальную версию -->
 <div class="banner info" id="importbox" hidden>
@@ -399,6 +406,15 @@
   </div>
 </div>
 
+<!-- инструкция -->
+<div class="modal" id="guide" onclick="if(event.target===this)closeModal('guide')">
+  <div class="box guide">
+    <h3 data-i18n="guide_title"></h3>
+    <div id="guidebody"></div>
+    <div class="actions"><button class="btn alt" onclick="closeModal('guide')" data-i18n="close"></button></div>
+  </div>
+</div>
+
 <div id="tooltip" role="tooltip"></div>
 
 <script>
@@ -499,7 +515,28 @@ ru: {
   tip_project:'Необязательно. Ссылка на страницу проекта (например, на GitHub) — тоже уходит в запросы к Liquipedia.',
   tip_pools:'Своя база турнирных пулов из osu!wiki и Liquipedia. Обновляй раз в пару недель, чтобы подтянуть новые турниры.',
   tip_add:'Кладёт подборку в игру через osu!trainer на твоём компьютере. Если его нет — покажем, как поставить одной командой.',
-  add_wait:'сначала подбери карты кнопкой «Подобрать карты»'
+  add_wait:'сначала подбери карты кнопкой «Подобрать карты»',
+  guide:'Инструкция', how_it_works:'Как это работает', guide_title:'Как пользоваться osu!trainer',
+  guide_html:'<p>osu!trainer подбирает карты osu! под навык, который хочешь тренировать, карты, похожие на твои любимые, или карты из настоящих турнирных пулов, и превращает их в коллекцию в <b>osu!lazer</b>.</p>' +
+    '<h4>1. Подбор</h4><ol>' +
+    '<li>Выбери вкладку: <b>Навыки</b> (Streams, Jumps, Tech, Finger control…) или <b>Турнирные пулы</b> (NM2, HD1, DT3… из 450+ турниров).</li>' +
+    '<li>Настрой фильтры. У каждого есть <b>?</b> с объяснением; звёзды, BPM и длина — двусторонние ползунки.</li>' +
+    '<li>Нажми <b>Подобрать карты</b> на сайте или <b>Собрать коллекцию</b> / <b>Только показать</b> в программе. В таблице видно, почему выбрана каждая карта.</li></ol>' +
+    '<h4>2. В игру</h4>' +
+    '<p>На сайте карты можно скачать по ссылкам в таблице или нажать <b>Добавить в игру</b> — тогда получится готовая коллекция. Сам сайт в игру записать не может, поэтому для этой кнопки нужна небольшая программа osu!trainer на компьютере. Ставится одной командой:</p>' +
+    '<div class="muted">Windows (PowerShell):</div><code class="cmd" onclick="copyText(this.textContent)">{win}</code>' +
+    '<div class="muted">macOS / Linux:</div><code class="cmd" onclick="copyText(this.textContent)">{unix}</code>' +
+    '<p>Она ставится в папку пользователя, при необходимости скачивает портативные Python и Node.js (в систему ничего не устанавливается), создаёт ярлык <b>osu!trainer</b> и открывает свою страницу в браузере. Программа умеет всё то же, что сайт, и ещё собирает коллекции из уже установленных карт.</p>' +
+    '<h4>3. Добавить в игру</h4><ol>' +
+    '<li>Запусти osu!trainer (ярлык или <code>start.bat</code>).</li>' +
+    '<li>Нажми <b>Добавить в игру</b> на сайте — откроется программа и попросит подтвердить.</li>' +
+    '<li>Недостающие карты скачаются и импортируются, коллекция появится в osu!lazer. Во время игры osu! откладывает импорт — он закончится, когда выйдешь в меню.</li></ol>' +
+    '<p>Если сайт пишет, что не нашёл программу, хотя она запущена, — его не пустил блокировщик рекламы или настройки браузера. Нажми <b>Уже установлен — открыть</b>.</p>' +
+    '<h4>Полезно знать</h4><ul>' +
+    '<li>Поддерживается только <b>osu!lazer</b>: коллекции записываются в его базу.</li>' +
+    '<li>Перед каждым изменением база копируется в резерв, а если версия osu! использует незнакомый формат базы, программа откажется в неё писать.</li>' +
+    '<li>Карты скачиваются с osu.ppy.sh, osu.direct и catboy.best; турнирные пулы — из osu!wiki и Liquipedia.</li>' +
+    '<li>Открытый код (MIT): <a href="{repo}" target="_blank" rel="noopener">GitHub</a>.</li></ul>'
 },
 en: {
   settings:'Settings', open_settings:'Open settings', tab_skill:'Skills', tab_tour:'Tournament pools',
@@ -594,11 +631,149 @@ en: {
   tip_project:'Optional. A link to the project page (e.g. GitHub) — also sent in requests to Liquipedia.',
   tip_pools:'Own database of tournament pools from osu!wiki and Liquipedia. Update every couple of weeks to pick up new tournaments.',
   tip_add:'Puts the selection into your game through osu!trainer on your computer. If it is not installed, you will see how to install it with one command.',
-  add_wait:'find maps first with the "Find maps" button'
-}};
+  add_wait:'find maps first with the "Find maps" button',
+  guide:'Guide', how_it_works:'How it works', guide_title:'How to use osu!trainer',
+  guide_html:'<p>osu!trainer picks osu! maps for the skill you want to practise, maps similar to ones you like, or maps from real tournament pools, and turns them into a collection in <b>osu!lazer</b>.</p>' +
+    '<h4>1. Pick maps</h4><ol>' +
+    '<li>Choose a tab: <b>Skills</b> (Streams, Jumps, Tech, Finger control…) or <b>Tournament pools</b> (NM2, HD1, DT3… from 450+ tournaments).</li>' +
+    '<li>Set the filters. Every filter has a <b>?</b> with an explanation; stars, BPM and length are two-handle sliders.</li>' +
+    '<li>Press <b>Find maps</b> on the website, or <b>Build collection</b> / <b>Preview only</b> in the desktop app. The table shows why each map was picked.</li></ol>' +
+    '<h4>2. Get them into osu!</h4>' +
+    '<p>On the website you can download the maps from the links in the table, or press <b>Add to game</b> to get a ready collection. The website can’t write into your game by itself, so “Add to game” needs the small osu!trainer app on your computer. Install it with one command:</p>' +
+    '<div class="muted">Windows (PowerShell):</div><code class="cmd" onclick="copyText(this.textContent)">{win}</code>' +
+    '<div class="muted">macOS / Linux:</div><code class="cmd" onclick="copyText(this.textContent)">{unix}</code>' +
+    '<p>It installs into your user folder, downloads portable Python and Node.js if needed (nothing is installed system-wide), creates an <b>osu!trainer</b> shortcut and opens its own page in your browser. The app does everything the website does and can also build collections from maps you already have.</p>' +
+    '<h4>3. Add to game</h4><ol>' +
+    '<li>Start osu!trainer (the shortcut or <code>start.bat</code>).</li>' +
+    '<li>Press <b>Add to game</b> on the website: the app opens and asks you to confirm.</li>' +
+    '<li>Missing maps are downloaded and imported, and the collection appears in osu!lazer. During gameplay osu! pauses imports; they finish when you’re back in the menu.</li></ol>' +
+    '<p>If the website says it can’t find the app while it’s running, an ad blocker or a browser setting stopped the site from talking to it. Press <b>Already installed — open</b>.</p>' +
+    '<h4>Good to know</h4><ul>' +
+    '<li>Only <b>osu!lazer</b> is supported: collections are written into its database.</li>' +
+    '<li>The database is backed up before every change, and the app refuses to write if your osu! version uses an unknown database format.</li>' +
+    '<li>Maps are downloaded from osu.ppy.sh, osu.direct and catboy.best; tournament pools come from the osu!wiki and Liquipedia.</li>' +
+    '<li>Open source (MIT): <a href="{repo}" target="_blank" rel="noopener">GitHub</a>.</li></ul>'
+},
+es: {
+  settings:'Ajustes', open_settings:'Abrir ajustes', tab_skill:'Habilidades', tab_tour:'Mappools de torneos',
+  skills:'Habilidades', like:'Mapas de referencia: «quiero algo parecido»',
+  like_ph:'enlaces a mapas o IDs de dificultades, por ejemplo\nhttps://osu.ppy.sh/beatmapsets/1231048#osu/2591748',
+  like_weight:'Peso de la similitud', min_pc:'Mín. de partidas', pop_weight:'Bonus por popularidad',
+  stream_bpm:'BPM de streams', status:'Estado del mapa', advanced:'Avanzado',
+  pool:'Candidatos a revisar', depth:'Profundidad de búsqueda', per_set:'Dificultades por canción', min_score:'Umbral de coincidencia',
+  threads:'Hilos', local_only:'solo mis mapas', skip_owned:'solo mapas nuevos', auto:'auto',
+  slots:'Slots del pool', digits:'Rango de los jugadores', tiers:'Nivel del torneo (Liquipedia)', years:'Años de los torneos',
+  per_tournament:'Mapas por torneo', max_lookups:'Mapas a revisar', tours:'Torneos',
+  tours_ph:'empieza a escribir: OWC, 5 Digit, CWC…', sources:'Fuentes',
+  map_music:'Mapa y música', stars:'Estrellas', bpm:'BPM', length:'Duración', genres:'Género',
+  words:'Palabras en etiquetas y título', words_ph:'por ejemplo: touhou, vocaloid, speedcore',
+  collection:'Colección', count:'Mapas', name:'Nombre de la colección', split:'Dividir por ★', split_ph:'no',
+  no_download:'no descargar mapas', no_collection:'no crear colección',
+  btn_run:'Crear colección', btn_run_server:'Buscar mapas', btn_dry:'Solo mostrar', btn_stop:'Detener',
+  collections:'Colecciones en el juego', log:'Progreso', results:'Resultado', no_results:'Aquí aparecerá la selección.',
+  th_map:'Mapa', th_why:'Por qué', th_get:'Descargar', any_bpm:'cualquiera', any_year:'todos los años', any_len:'cualquiera', from:'desde', to:'hasta',
+  set_osu_data:'Carpeta de datos de osu!lazer', set_osu_exe:'Ejecutable de osu!lazer', set_contact:'Contacto para Liquipedia',
+  contact_ph:'email o Discord', set_project:'Página del proyecto', save:'Guardar', close:'Cerrar',
+  set_pools:'Base de torneos', pools_refresh:'Actualizar base', auto_detect:'detectar automáticamente',
+  pools_info:'{m}, ediciones de torneos: {e} · actualizada {d}',
+  pools_empty:'La base aún no está creada: pulsa «Actualizar base» (2–3 minutos).',
+  info:'Colecciones: {c} · base de torneos: {m}', info_site:'Base de torneos: {m}, ediciones de torneos: {e}',
+  info_nopool:'Colecciones: {c} · base de torneos sin crear',
+  need_slot:'Elige al menos un slot (NM2, HD1 …)', need_skill:'Elige una habilidad o añade mapas de referencia',
+  confirm_delete:'¿Eliminar la colección «{n}»? Los mapas se quedan en el juego y antes se hace una copia de seguridad de la base.',
+  working:'trabajando…', queued:'en cola…', done:'listo', cancelled:'detenido', owned:'ya lo tienes', new_:'nuevo',
+  too_many:'Demasiadas peticiones: espera un poco y vuelve a intentarlo.',
+  res_count:' · {m}', res_dl:', beatmapsets descargados: {n}', no_collections:'Aún no hay colecciones.',
+  unknown:'sin especificar',
+  env_data_ok:'Base de datos de osu!lazer encontrada', env_data_bad:'No se encontró la carpeta de osu!lazer: indícala abajo',
+  env_fmt_ok:'Formato de la base compatible ({f})', env_fmt_bad:'El formato de la base {f} no es compatible (se necesita {x}): la escritura de colecciones está desactivada, actualiza osu!trainer',
+  env_exe_ok:'Juego encontrado', env_exe_bad:'No se encontró el ejecutable del juego: los mapas se abrirán con el sistema',
+  env_node_ok:'Node.js encontrado', env_node_bad:'No se encontró Node.js: reinstala osu!trainer con el comando de una línea del README',
+  env_mod_ok:'Dependencias instaladas', env_mod_bad:'Faltan dependencias: ejecuta setup',
+  banner_data:'No se encontró osu!lazer en este ordenador. Indica la carpeta de datos en los ajustes.',
+  banner_node:'Faltan Node.js o dependencias: ejecuta setup (ver README).',
+  banner_fmt:'Esta versión de osu!lazer usa un formato de base nuevo: no se pueden escribir colecciones hasta actualizar osu!trainer.',
+  banner_site:'Esta es la versión web: los mapas se eligen aquí y osu!trainer en tu ordenador mete la colección en el juego con el botón «Añadir al juego».',
+  pools_building:'actualizando la base de torneos… (Liquipedia sirve los datos despacio, según sus normas)',
+  add_to_game:'Añadir al juego', copy_link:'Copiar enlace', copied:'Copiado',
+  need_app_title:'El sitio no encontró osu!trainer en tu ordenador',
+  need_app_text:'La colección la escribe en el juego osu!trainer, en tu ordenador. Si ya está abierto pero el sitio no lo ve (puede pasar por un bloqueador de anuncios o por la configuración del navegador), pulsa «Ya está instalado: abrir». Si aún no lo tienes, instálalo con el comando de abajo, ábrelo y vuelve a pulsar «Añadir al juego». También puedes descargar los mapas con los enlaces de la tabla.',
+  install_win:'Windows, en PowerShell:', install_unix:'macOS / Linux, en la terminal:', install_after:'Código fuente e instrucciones:',
+  try_again:'Reintentar',
+  import_text:'{site} te ofrece la selección «{name}»: {m}. Los mapas que falten se descargarán y la colección aparecerá en el juego.',
+  open_local:'Ya está instalado: abrir',
+  import_ok:'Añadir al juego', import_cancel:'No, gracias', import_bad:'No se pudo cargar la selección: {e}',
+  footer:'Mappools de torneos: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) y <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Mapas: osu.ppy.sh, osu.direct, catboy.best. Proyecto no afiliado a ppy Pty Ltd.',
+
+  tip_skills:'Qué habilidad entrenar. Puedes elegir varias: cada mapa se puntúa por la mejor de ellas. Pasa el cursor por una habilidad para ver qué mide.',
+  tip_like:'Pega enlaces a mapas que te gusten (o IDs de dificultades). Se analizan su ritmo, densidad, spacing y sliders, y se buscan mapas parecidos. Funciona sin elegir habilidades.',
+  tip_like_weight:'Cuánto importa el parecido con los mapas de referencia, de 0 a 1. 0.7 = 70 % parecido y 30 % la habilidad elegida.',
+  tip_min_pc:'Descarta mapas poco conocidos: mínimo de partidas de la dificultad. Desde 80 000, mapas populares.',
+  tip_pop_weight:'Suma hasta N puntos a los mapas populares para que, a igual coincidencia, salgan antes los conocidos. 10–15 es un bonus notable, 0 lo desactiva.',
+  tip_stream_bpm:'BPM de los streams (cadenas de notas a 1/4). Útil para Streams y Speed. Con los extremos en los bordes: cualquiera.',
+  tip_status:'ranked: mapas clasificados; loved: favoritos de la comunidad (a menudo más raros y difíciles); approved y qualified: estados poco comunes.',
+  tip_pool:'Cuántos mapas candidatos descargar y analizar. Más = mejor selección, pero más lento: unos 80 mapas por minuto.',
+  tip_depth:'Hasta qué profundidad revisar los resultados de búsqueda de cada consulta.',
+  tip_per_set:'Cuántas dificultades de una misma canción pueden entrar en la colección. 1 = más canciones distintas.',
+  tip_min_score:'Puntuación mínima de coincidencia con la habilidad, de 0 a 100. Vacío: el valor por defecto de la habilidad.',
+  tip_threads:'Cuántos mapas se revisan en paralelo. No hace falta más de 4: los mirrors limitan las peticiones.',
+  tip_local_only:'No descargar nada: crear la colección solo con mapas ya instalados.',
+  tip_skip_owned:'Excluir los mapas que ya tienes en el juego.',
+  tip_slots:'Un slot es el mod más la posición del mapa en el pool de una ronda: NM2 es el segundo mapa No Mod, HD1 el primero con Hidden, TB el tiebreaker. El número refleja más o menos la dificultad dentro del mod. Pulsa el nombre del mod a la izquierda para elegir toda la fila. El número del botón indica cuántos mapas así hay en la base.',
+  tip_digits:'Restricción de rango de los jugadores del torneo: 5-digit = rangos del 10 000 al 99 999, 6-digit = desde 100 000, open = sin restricción. «Sin especificar»: la página del torneo no indica restricción (normalmente es open). Sin selección: todos los torneos.',
+  tip_tiers:'Nivel del torneo en Liquipedia: S son los más grandes (OWC y similares), luego A, B, C, D. «?»: el torneo no está en Liquipedia. Sin selección: todos.',
+  tip_years:'Años en que se jugaron los torneos. Con los extremos en los bordes: todos los años.',
+  tip_per_tournament:'Máximo de mapas de un mismo torneo, para que la selección venga de torneos distintos.',
+  tip_max_lookups:'Cuántos mapas del pool revisar: las estrellas de cada mapa se piden a un mirror (unos 90 por minuto, luego se recuerdan). Si salen pocos, auméntalo.',
+  tip_tours:'Solo estos torneos. Busca por parte del nombre: «5 Digit» encuentra todos los torneos 5 Digit. Vacío: todos.',
+  tip_sources:'De dónde salen los pools: la osu!wiki oficial y Liquipedia. Los mapas repetidos en ambas ya están unidos. Sin selección: ambas.',
+  tip_stars:'Estrellas de la dificultad sin mods. En los slots DT y HR el mapa es más difícil con el mod. El extremo derecho al final significa sin límite superior.',
+  tip_bpm:'BPM del mapa. Con los extremos en los bordes: cualquiera.',
+  tip_length:'Duración del mapa. Con los extremos en los bordes: cualquiera.',
+  tip_genres:'Género musical tal como figura en la web de osu!. Sin selección: cualquiera. El género lo eligen los propios mappers, por eso a veces está «sin especificar».',
+  tip_words:'Más preciso que el género: el mapa entra si alguna de las palabras aparece en sus etiquetas, título, artista o fuente. Por ejemplo: touhou, vocaloid, speedcore, metal.',
+  tip_count:'Cuántos mapas meter en la colección.',
+  tip_name:'Nombre de la colección en el juego. Si ya existe, los mapas se añaden sin duplicados.',
+  tip_split:'Dividir el resultado en varias colecciones por estrellas con este paso: 0.5 → «… 5.0-5.5», «… 5.5-6.0».',
+  tip_no_download:'No descargar los mapas que falten. Igualmente entran en la colección y aparecerán cuando los instales.',
+  tip_no_collection:'Solo descargar los mapas, sin tocar las colecciones.',
+  tip_run:'Elegir mapas, descargar los que falten, enviarlos a osu! y crear la colección. Antes de escribir se hace una copia de seguridad de la base.',
+  tip_run_server:'Elegir mapas según los filtros. Luego puedes descargarlos con los enlaces o añadirlos al juego con osu!trainer en tu ordenador.',
+  tip_dry:'Solo elegir y mostrar la lista: no se descarga ni se cambia nada.',
+  tip_collections:'Colecciones de tu juego. Eliminar quita solo la colección; los mapas se quedan.',
+  tip_osu_data:'Carpeta de datos de osu!lazer, donde está client.realm. Normalmente se detecta sola; indícala si moviste los datos del juego.',
+  tip_osu_exe:'Ejecutable de osu!lazer: a través de él los mapas descargados llegan al juego.',
+  tip_contact:'Opcional. Liquipedia pide incluir un contacto (email o Discord) en las peticiones a su API para poder avisar si hay problemas.',
+  tip_project:'Opcional. Enlace a la página del proyecto (por ejemplo, GitHub); también se envía en las peticiones a Liquipedia.',
+  tip_pools:'Base propia de mappools de torneos de la osu!wiki y Liquipedia. Actualízala cada par de semanas para añadir torneos nuevos.',
+  tip_add:'Mete la selección en el juego a través de osu!trainer en tu ordenador. Si no lo tienes, verás cómo instalarlo con un solo comando.',
+  add_wait:'primero busca mapas con el botón «Buscar mapas»',
+  guide:'Guía', how_it_works:'Cómo funciona', guide_title:'Cómo usar osu!trainer',
+  guide_html:'<p>osu!trainer elige mapas de osu! para la habilidad que quieres entrenar, mapas parecidos a los que te gustan o mapas de mappools reales de torneos, y los convierte en una colección de <b>osu!lazer</b>.</p>' +
+    '<h4>1. Elegir mapas</h4><ol>' +
+    '<li>Elige una pestaña: <b>Habilidades</b> (Streams, Jumps, Tech, Finger control…) o <b>Mappools de torneos</b> (NM2, HD1, DT3… de más de 450 torneos).</li>' +
+    '<li>Ajusta los filtros. Cada filtro tiene un <b>?</b> con su explicación; estrellas, BPM y duración son deslizadores de dos extremos.</li>' +
+    '<li>Pulsa <b>Buscar mapas</b> en la web, o <b>Crear colección</b> / <b>Solo mostrar</b> en la aplicación. La tabla muestra por qué se eligió cada mapa.</li></ol>' +
+    '<h4>2. Llevarlos a osu!</h4>' +
+    '<p>En la web puedes descargar los mapas con los enlaces de la tabla o pulsar <b>Añadir al juego</b> para obtener una colección lista. La web no puede escribir en tu juego por sí sola, así que «Añadir al juego» necesita la pequeña aplicación osu!trainer en tu ordenador. Se instala con un solo comando:</p>' +
+    '<div class="muted">Windows (PowerShell):</div><code class="cmd" onclick="copyText(this.textContent)">{win}</code>' +
+    '<div class="muted">macOS / Linux:</div><code class="cmd" onclick="copyText(this.textContent)">{unix}</code>' +
+    '<p>Se instala en tu carpeta de usuario, descarga versiones portátiles de Python y Node.js si hacen falta (no instala nada en el sistema), crea un acceso directo <b>osu!trainer</b> y abre su propia página en el navegador. La aplicación hace todo lo que hace la web y además puede crear colecciones con los mapas que ya tienes.</p>' +
+    '<h4>3. Añadir al juego</h4><ol>' +
+    '<li>Abre osu!trainer (el acceso directo o <code>start.bat</code>).</li>' +
+    '<li>Pulsa <b>Añadir al juego</b> en la web: se abre la aplicación y te pide confirmación.</li>' +
+    '<li>Los mapas que falten se descargan e importan, y la colección aparece en osu!lazer. Durante el juego osu! pausa las importaciones; terminan al volver al menú.</li></ol>' +
+    '<p>Si la web dice que no encuentra la aplicación aunque esté abierta, un bloqueador de anuncios o la configuración del navegador le impidió comunicarse con ella. Pulsa <b>Ya está instalado: abrir</b>.</p>' +
+    '<h4>Conviene saber</h4><ul>' +
+    '<li>Solo es compatible con <b>osu!lazer</b>: las colecciones se escriben en su base de datos.</li>' +
+    '<li>Antes de cada cambio se hace una copia de seguridad de la base, y la aplicación no escribe si tu versión de osu! usa un formato de base desconocido.</li>' +
+    '<li>Los mapas se descargan de osu.ppy.sh, osu.direct y catboy.best; los mappools de torneos salen de la osu!wiki y Liquipedia.</li>' +
+    '<li>Código abierto (MIT): <a href="{repo}" target="_blank" rel="noopener">GitHub</a>.</li></ul>'
+}
+};
 
 /* ============================== состояние ============================== */
-let LANG = 'ru', MODE = 'skill', DATA = null, JOB = null, SEEN = 0, TIMER = null, LASTRESULT = null, SITE = false;
+let LANG = 'en', MODE = 'skill',   /* английский по умолчанию; выбор языка запоминается */ DATA = null, JOB = null, SEEN = 0, TIMER = null, LASTRESULT = null, SITE = false;
 let IMPORT = null;
 const LOCAL_APP = 'http://127.0.0.1:8730';
 const picked = { skills:new Set(['fingercontrol']), status:new Set(['ranked']), slots:new Set(), digits:new Set(),
@@ -607,9 +782,12 @@ const $ = id => document.getElementById(id);
 const t = (k, vars) => { let s = (T[LANG] && T[LANG][k]) || T.ru[k] || k;
   if (vars) for (const [a, b] of Object.entries(vars)) s = s.split('{' + a + '}').join(b); return s; };
 /* «1 карта, 2 карты, 5 карт» */
+/* поле объекта на текущем языке: desc, desc_en, desc_es (русский - без суффикса) */
+const L = (obj, base) => LANG === 'ru' ? obj[base] : (obj[base + '_' + LANG] || obj[base + '_en']);
 function mapsText(n){
-  n = +n; const s = n.toLocaleString(LANG === 'en' ? 'en' : 'ru');
+  n = +n; const s = n.toLocaleString(LANG);
   if (LANG === 'en') return s + (n === 1 ? ' map' : ' maps');
+  if (LANG === 'es') return s + (n === 1 ? ' mapa' : ' mapas');
   const d = n % 10, h = n % 100;
   return s + (d === 1 && h !== 11 ? ' карта' : d >= 2 && d <= 4 && (h < 12 || h > 14) ? ' карты' : ' карт');
 }
@@ -685,6 +863,7 @@ function applyLang(){
   if (DATA) render();
   if (IMPORT && IMPORT.preview) showImport();
   if (DATA) updateShare();
+  if ($('guide').classList.contains('open')) openGuide();
 }
 
 /* ============================== подсказки ============================== */
@@ -743,10 +922,9 @@ function render(){
   $('info').textContent = SITE ? (pool ? t('info_site', {m:mapsText(pool.entries), e:pool.editions}) : '')
     : pool ? t('info', {c:d.collections.length, m:mapsText(pool.entries)}) : t('info_nopool', {c:d.collections.length});
 
-  chips($('skills'), d.skills.map(s => ({ key:s.key, label:LANG === 'en' ? s.title_en : s.title,
-                                          tip:LANG === 'en' ? s.desc_en : s.desc })), picked.skills);
+  chips($('skills'), d.skills.map(s => ({ key:s.key, label:L(s, 'title'), tip:L(s, 'desc') })), picked.skills);
   chips($('status'), ['ranked','loved','approved','qualified'].map(s => ({key:s, label:s})), picked.status);
-  chips($('genres'), d.genres.map(g => ({ key:String(g.id), label:LANG === 'en' ? g.en : g.ru })), picked.genres);
+  chips($('genres'), d.genres.map(g => ({ key:String(g.id), label:g[LANG] || g.en })), picked.genres);
 
   const g = $('slots'); g.innerHTML = '';
   $('nopool').hidden = !!pool; $('nopool').textContent = t('pools_empty');
@@ -1023,7 +1201,12 @@ async function checkShare(){
 /* ============================== настройки ============================== */
 function openSettings(){ $('settings').classList.add('open'); }
 function closeModal(id){ $(id).classList.remove('open'); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal('settings'); closeModal('installbox'); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal('settings'); closeModal('installbox'); closeModal('guide'); } });
+function openGuide(){
+  const ins = (DATA && DATA.install) || {};
+  $('guidebody').innerHTML = t('guide_html', {win:esc(ins.windows || ''), unix:esc(ins.unix || ''), repo:esc(ins.repo || '#')});
+  $('guide').classList.add('open');
+}
 async function saveSettings(){
   const body = {}; ['osu_data','osu_exe','contact','project_url'].forEach(k => body[k] = $('cfg_' + k).value.trim());
   body.language = LANG;
@@ -1040,7 +1223,8 @@ async function load(){
   const wasSite = SITE; SITE = DATA.mode === 'server';
   document.querySelectorAll('.localonly').forEach(el => el.hidden = SITE);
   $('btn-settings').hidden = SITE;
-  if (SITE){ $('banner').hidden = false; $('banner').className = 'banner info'; $('bannertext').textContent = t('banner_site'); $('bannerbtn').hidden = true; }
+  if (SITE){ $('banner').hidden = false; $('banner').className = 'banner info'; $('bannertext').textContent = t('banner_site');
+             $('bannerbtn').hidden = true; $('bannerguide').hidden = false; }
   if (SITE !== wasSite) applyLang();
   render();
   updateShare();

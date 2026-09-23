@@ -23,7 +23,7 @@ DEFAULTS = {
     "osu_exe": "",           # исполняемый файл lazer (пусто = найти автоматически)
     "contact": "",           # контакт для User-Agent Liquipedia (email / discord), по желанию
     "project_url": "",       # страница проекта (например, репозиторий на GitHub) для User-Agent
-    "language": "ru",
+    "language": "en",
     "port": 8730,
     # сайты, которым разрешено предлагать коллекции для кнопки «Добавить в игру»
     "sites": ["https://osu.gravitacia.art"],

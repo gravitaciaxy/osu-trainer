@@ -38,12 +38,15 @@ DL = config.DOWNLOAD_DIR
 BACKUPS = config.BACKUP_DIR
 STATUS = {"ranked": 1, "approved": 2, "qualified": 3, "loved": 4}
 
-# жанры osu! (genre_id): русское и английское название
+# жанры osu! (genre_id): название по-русски, по-английски и по-испански
 GENRES = {
-    2: ("Игры", "Video game"), 3: ("Аниме", "Anime"), 4: ("Рок", "Rock"), 5: ("Поп", "Pop"),
-    10: ("Электроника", "Electronic"), 11: ("Метал", "Metal"), 9: ("Хип-хоп", "Hip hop"),
-    12: ("Классика", "Classical"), 14: ("Джаз", "Jazz"), 13: ("Фолк", "Folk"),
-    7: ("Необычное", "Novelty"), 6: ("Другое", "Other"), 1: ("Не указан", "Unspecified"),
+    2: ("Игры", "Video game", "Videojuegos"), 3: ("Аниме", "Anime", "Anime"),
+    4: ("Рок", "Rock", "Rock"), 5: ("Поп", "Pop", "Pop"),
+    10: ("Электроника", "Electronic", "Electrónica"), 11: ("Метал", "Metal", "Metal"),
+    9: ("Хип-хоп", "Hip hop", "Hip hop"), 12: ("Классика", "Classical", "Clásica"),
+    14: ("Джаз", "Jazz", "Jazz"), 13: ("Фолк", "Folk", "Folk"),
+    7: ("Необычное", "Novelty", "Novedad"), 6: ("Другое", "Other", "Otro"),
+    1: ("Не указан", "Unspecified", "Sin especificar"),
 }
 
 
@@ -367,7 +370,7 @@ def pick_tournament(a, stars, log):
 # ------------------------------------------------------- подбор и запись ----
 
 def prepare(a):
-    set_lang(getattr(a, "lang", "ru"))
+    set_lang(getattr(a, "lang", "en"))
     os.makedirs(CACHE, exist_ok=True)
     if not getattr(a, "server", False):      # на сервере карты не скачиваются, папка только для чтения
         os.makedirs(DL, exist_ok=True)
@@ -553,48 +556,48 @@ def run(a, log=print):
 
 
 def build_parser():
-    p = argparse.ArgumentParser(description="osu!trainer: подбор карт и коллекция в osu!lazer")
-    g = p.add_argument_group("что ищем")
-    g.add_argument("--skill", help="навыки через запятую: streams, jumps, tech, fingercontrol, ...")
-    g.add_argument("--like", help="id сложностей-образцов через запятую (ищем похожие)")
-    g.add_argument("--tournament", help="турнирные слоты: NM2,NM3,NM4 или целиком моды: NM,HD")
-    g = p.add_argument_group("музыка и карта")
-    g.add_argument("--stars", required=True, help="звёзды, напр. 5.2-6.0")
-    g.add_argument("--bpm", default=None, help="BPM карты, напр. 170-220")
-    g.add_argument("--length", default="30-600", help="длина в секундах, напр. 60-240")
-    g.add_argument("--genres", help="жанры (id): 2 игры, 3 аниме, 4 рок, 5 поп, 9 хип-хоп, "
-                                     "10 электроника, 11 метал, 12 классика, 13 фолк, 14 джаз")
-    g.add_argument("--words", help="слова в тегах/названии через запятую: touhou,speedcore")
-    g = p.add_argument_group("турнирные фильтры")
-    g.add_argument("--years", help="годы турниров, напр. 2021-2026")
-    g.add_argument("--tours", help="турниры (часть названия) через запятую, напр. OWC,5 Digit")
-    g.add_argument("--digits", help="рейтинг участников: open,3,4,5,6,unknown")
-    g.add_argument("--tiers", help="уровень турнира по Liquipedia: S,A,B,C,D")
-    g.add_argument("--sources", help="источники: osu!wiki,Liquipedia")
-    g.add_argument("--per-tournament", type=int, default=3, help="макс. карт с одного турнира")
-    g.add_argument("--max-lookups", type=int, default=600, help="сколько карт пула проверять")
-    g = p.add_argument_group("навыки")
-    g.add_argument("--like-weight", type=float, default=0.7, help="вес похожести (0-1)")
-    g.add_argument("--min-pc", type=int, default=0, help="минимум игр у сложности")
-    g.add_argument("--pop-weight", type=float, default=0.0, help="бонус за популярность (0-20)")
-    g.add_argument("--stream-bpm", default=None, help="BPM streams, напр. 180-210")
+    p = argparse.ArgumentParser(description="osu!trainer: pick maps and build an osu!lazer collection")
+    g = p.add_argument_group("what to look for")
+    g.add_argument("--skill", help="comma-separated skills: streams, jumps, tech, fingercontrol, ...")
+    g.add_argument("--like", help="comma-separated reference difficulty ids (find similar maps)")
+    g.add_argument("--tournament", help="tournament slots: NM2,NM3,NM4 or whole mods: NM,HD")
+    g = p.add_argument_group("map and music")
+    g.add_argument("--stars", required=True, help="star range, e.g. 5.2-6.0")
+    g.add_argument("--bpm", default=None, help="map BPM, e.g. 170-220")
+    g.add_argument("--length", default="30-600", help="length in seconds, e.g. 60-240")
+    g.add_argument("--genres", help="genre ids: 2 video game, 3 anime, 4 rock, 5 pop, 9 hip hop, "
+                                     "10 electronic, 11 metal, 12 classical, 13 folk, 14 jazz")
+    g.add_argument("--words", help="comma-separated words in tags/title: touhou,speedcore")
+    g = p.add_argument_group("tournament filters")
+    g.add_argument("--years", help="tournament years, e.g. 2021-2026")
+    g.add_argument("--tours", help="comma-separated tournaments (part of the name), e.g. OWC,5 Digit")
+    g.add_argument("--digits", help="player rank range: open,3,4,5,6,unknown")
+    g.add_argument("--tiers", help="Liquipedia tournament tier: S,A,B,C,D")
+    g.add_argument("--sources", help="sources: osu!wiki,Liquipedia")
+    g.add_argument("--per-tournament", type=int, default=3, help="max maps from one tournament")
+    g.add_argument("--max-lookups", type=int, default=600, help="how many pool maps to check")
+    g = p.add_argument_group("skills")
+    g.add_argument("--like-weight", type=float, default=0.7, help="similarity weight (0-1)")
+    g.add_argument("--min-pc", type=int, default=0, help="minimum playcount of the difficulty")
+    g.add_argument("--pop-weight", type=float, default=0.0, help="popularity bonus (0-20)")
+    g.add_argument("--stream-bpm", default=None, help="stream BPM, e.g. 180-210")
     g.add_argument("--status", default="ranked", help="ranked,loved,approved,qualified")
-    g.add_argument("--pool", type=int, default=260, help="сколько кандидатов проверить")
-    g.add_argument("--depth", type=int, default=150, help="глубина поиска")
-    g.add_argument("--per-set", type=int, default=1, help="макс. сложностей одной песни")
-    g.add_argument("--per-set-probe", type=int, default=2, help="сложностей песни на проверку")
-    g.add_argument("--min-score", type=float, default=None, help="порог соответствия 0-100")
-    g.add_argument("--local-only", action="store_true", help="только установленные карты")
-    g.add_argument("--skip-owned", action="store_true", help="только новые карты")
-    g.add_argument("--threads", type=int, default=4, help="потоков проверки")
-    g = p.add_argument_group("общие")
-    g.add_argument("--count", type=int, default=30, help="сколько карт в коллекции")
-    g.add_argument("--name", help="имя коллекции")
-    g.add_argument("--split", type=float, default=None, help="разбить на коллекции по звёздам с шагом")
-    g.add_argument("--lang", default="ru", help="язык сообщений: ru / en")
-    g.add_argument("--dry-run", action="store_true", help="только показать подборку")
-    g.add_argument("--no-download", action="store_true", help="не скачивать карты")
-    g.add_argument("--no-collection", action="store_true", help="не создавать коллекцию")
+    g.add_argument("--pool", type=int, default=260, help="how many candidates to check")
+    g.add_argument("--depth", type=int, default=150, help="search depth")
+    g.add_argument("--per-set", type=int, default=1, help="max difficulties from one song")
+    g.add_argument("--per-set-probe", type=int, default=2, help="difficulties per song to check")
+    g.add_argument("--min-score", type=float, default=None, help="match threshold 0-100")
+    g.add_argument("--local-only", action="store_true", help="installed maps only")
+    g.add_argument("--skip-owned", action="store_true", help="new maps only")
+    g.add_argument("--threads", type=int, default=4, help="analysis threads")
+    g = p.add_argument_group("general")
+    g.add_argument("--count", type=int, default=30, help="how many maps in the collection")
+    g.add_argument("--name", help="collection name")
+    g.add_argument("--split", type=float, default=None, help="split into collections by stars with this step")
+    g.add_argument("--lang", default="en", help="message language: en / es / ru")
+    g.add_argument("--dry-run", action="store_true", help="only show the selection")
+    g.add_argument("--no-download", action="store_true", help="don't download maps")
+    g.add_argument("--no-collection", action="store_true", help="don't create a collection")
     return p
 
 

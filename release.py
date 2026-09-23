@@ -36,7 +36,17 @@ def set_repo(repo):
     print("репозиторий: %s -> %s в %s" % (old, repo, ", ".join(REPO_FILES)))
 
 
+def check_ascii(path):
+    """Windows PowerShell 5.1 читает файлы без BOM в ANSI-кодировке, а BOM ломает «irm | iex»."""
+    with open(path, "rb") as f:
+        bad = [i for i, b in enumerate(f.read()) if b > 127]
+    if bad:
+        raise SystemExit("%s: не-ASCII символы (первый на байте %d) - PowerShell 5.1 не разберёт файл"
+                         % (path, bad[0]))
+
+
 def build():
+    check_ascii("install.ps1")
     os.makedirs("data", exist_ok=True)
     for src, dst in SEEDS:
         if os.path.exists(src):

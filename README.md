@@ -1,57 +1,61 @@
 # osu!trainer
 
-**RU** | [EN](#english)
+**English** | [Русский](#русский) | [Español](#español)
 
-Подбирает карты osu! под навык, который хочешь тренировать, или под слоты турнирных пулов,
-скачивает их и создаёт коллекцию в **osu!lazer**.
+Finds osu! maps for the skill you want to practise, maps similar to the ones you like, or maps from
+real tournament pools — and turns them into a ready collection in **osu!lazer**.
 
-- **Навыки** — Streams, Jumps / aim, Tech, Finger control, Reading и ещё 6. Карты выбираются не
-  по тегам: каждая кандидатка скачивается и разбирается по объектам — деления ритма, spacing,
-  смены ритма, SV, плотность нот.
-- **«Хочу похожее»** — вставь ссылки на любимые карты, и найдутся карты с похожим профилем.
-- **Турнирные пулы** — 32 000+ карт из 450+ турниров (osu!wiki + Liquipedia). Выбираешь слоты
-  NM2 / HD1 / DT3 / TB…, звёзды, рейтинг участников (open, 3/4/5/6-digit), уровень турнира и годы,
-  а подборка собирается из разных турниров.
-- **Фильтры** — звёзды, BPM и длина двусторонними ползунками, жанр музыки, слова в тегах
+- **Skills** — Streams, Jumps / aim, Tech, Finger control, Reading and 6 more. Maps are not picked by
+  tags: every candidate is downloaded and analysed object by object (snaps, spacing, rhythm changes,
+  SV, note density).
+- **"More like these"** — paste links to maps you like and get maps with a similar profile
+  (BPM, stream share, rhythm changes, sliders, spacing).
+- **Tournament pools** — 32,000+ maps from 450+ tournaments (osu!wiki + Liquipedia). Pick slots like
+  NM2 / HD1 / DT3 / TB, stars, player rank range (open, 3/4/5/6-digit), tournament tier and years;
+  the selection is drawn from different tournaments.
+- **Filters** — stars, BPM and length as two-handle sliders, music genre, words in tags
   (touhou, vocaloid, speedcore…).
+- Interface in English, Spanish and Russian.
 
-## Онлайн-версия
+## Online version
 
-**https://osu.gravitacia.art** — подбор работает прямо на сайте. Карты можно скачать по ссылкам,
-а кнопка «Добавить в игру» кладёт подборку в osu! через установленный на компьютере osu!trainer.
+**https://osu.gravitacia.art** — pick maps right on the website. Download them from the links in the
+table, or press **Add to game** to put the selection into osu! through osu!trainer on your computer.
+The "Guide" button on the site explains every step.
 
-## Установка одной командой
+## One-line install
 
-**Windows** — открой PowerShell и вставь:
+**Windows** — open PowerShell and paste:
 ```powershell
 irm https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.ps1 | iex
 ```
-Установщик поставит программу в `%LOCALAPPDATA%\osu-trainer`, создаст ярлык «osu!trainer» и запустит
-её. Если в системе нет Python или Node.js, он скачает их портативные версии в папку программы —
-в систему ничего не устанавливается. Повторный запуск той же команды обновляет программу.
+It installs to `%LOCALAPPDATA%\osu-trainer`, creates an "osu!trainer" shortcut and starts the app.
+If Python or Node.js is missing, portable copies are downloaded into the app folder — nothing is
+installed system-wide. Run the same command again to update.
 
-**macOS / Linux** (нужны `python3` 3.9+ и `node` 18+):
+**macOS / Linux** (needs `python3` 3.9+ and `node` 18+):
 ```sh
 curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.sh | sh
 ```
 
-**Вручную:** `git clone https://github.com/gravitaciaxy/osu-trainer`, затем `start.bat`
-(или `./start.sh`). Нужны Python 3.9+ и Node.js 18+, сторонние Python-пакеты не нужны.
+**Manually:** `git clone https://github.com/gravitaciaxy/osu-trainer`, then `start.bat` (or
+`./start.sh`). Needs Python 3.9+ and Node.js 18+; no third-party Python packages.
 
-Папка osu!lazer находится автоматически, в том числе если данные игры перенесены. Если не
-нашлась — укажи её в «Настройках».
+The osu!lazer data folder is found automatically, including a relocated one. If it isn't, set it in
+**Settings**.
 
-## Как пользоваться
+## Usage
 
-1. Выбери вкладку: **Навыки** или **Турнирные пулы**. У каждого фильтра есть подсказка — значок «?».
-2. Настрой звёзды, BPM, длину, жанр и количество карт.
-3. **Только показать** — посмотреть подборку, ничего не меняя. **Собрать коллекцию** — скачать
-   недостающие карты, отправить их в игру и создать коллекцию.
+1. Pick a tab: **Skills** or **Tournament pools**. Every filter has a "?" tooltip.
+2. Set stars, BPM, length, genre and the number of maps.
+3. **Preview only** shows the selection without changing anything. **Build collection** downloads
+   missing maps, sends them to osu! and creates the collection.
 
-Коллекция появляется в игре сразу. Во время игры lazer откладывает импорт карт — они появятся,
-когда выйдешь в меню. Коллекция с тем же именем не дублируется: новые карты дописываются в неё.
+The collection shows up in the game right away. During gameplay osu!lazer pauses imports — new maps
+finish importing when you're back in the menu. A collection with the same name is not duplicated:
+new maps are added to it.
 
-Есть и командная строка:
+Command line:
 ```sh
 python trainer.py --skill streams --stars 5.2-6.0 --count 30
 python trainer.py --skill fingercontrol,tech --like "2591748,2823535" --stars 4.8-6 --count 40 --pop-weight 12
@@ -60,91 +64,116 @@ python trainer.py --skill jumps --stars 5-6 --genres 10,11 --words speedcore,dnb
 python trainer.py --help
 ```
 
-## Безопасность твоей базы
+## Is it safe for my osu!?
 
-- Перед каждой записью копия `client.realm` сохраняется в `backups/` (последние 10).
-- Чтение базы — только чтение, можно при запущенной игре.
-- Запись разрешена, только если формат файла базы совпадает с поддерживаемым (сейчас 24 —
-  Realm 20.1.0, как в lazer). Если игра сменит формат, программа откажется писать, а не испортит базу.
-- Интерфейс слушает только `127.0.0.1` и отклоняет запросы с посторонних сайтов. Подборки
-  принимаются только с сайтов из списка в настройках, и каждую нужно подтвердить.
-
-## Откуда данные
-
-- Поиск и скачивание карт: зеркала [osu.direct](https://osu.direct) и [catboy.best](https://catboy.best),
-  файлы `.osu` — с [osu.ppy.sh](https://osu.ppy.sh). Все запросы идут с ограничением частоты.
-- Турнирные пулы: [osu!wiki](https://osu.ppy.sh/wiki/Tournaments) (CC BY-NC 4.0) и
-  [Liquipedia](https://liquipedia.net/osu) (CC BY-SA 3.0). Готовая база лежит в `data/`, обновляется
-  кнопкой в настройках. К Liquipedia программа обращается по их
-  [правилам API](https://liquipedia.net/api-terms-of-use): не чаще раза в 2 секунды и с кэшем.
-
-## Свой сайт
-
-Тот же код работает как сайт (нужен только Python). На сервере с nginx — одна команда от root:
-```sh
-curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/server-install.sh | sh
-```
-Подробности, HTTPS и обновление — в [deploy/](deploy/README.md).
-
-## Если что-то не так
-
-| Проблема | Что делать |
-|---|---|
-| «osu!lazer не найден» | Укажи в настройках папку, где лежит `client.realm`. |
-| «Node.js не найден» / «не установлены зависимости» | Повтори команду установки. |
-| «Формат базы не поддерживается» | Вышла версия lazer с новым форматом базы — обнови osu!trainer той же командой. |
-| Карты не появились в игре | Выйди из игры в меню — lazer импортирует карты только там. |
-| Сайт не видит программу при «Добавить в игру» | Запусти osu!trainer и разреши сайту доступ к локальной сети, если браузер спросит; или нажми «Уже установлен — открыть». |
-| Порт 8730 занят | Программа сама возьмёт следующий свободный, или `start.bat --port 9000`. |
-
-Проект не связан с ppy Pty Ltd. osu! — торговая марка ppy Pty Ltd. Лицензия — MIT.
-
----
-
-<a name="english"></a>
-# osu!trainer (English)
-
-Finds osu! maps for the skill you want to practise or for tournament pool slots, downloads them and
-creates a collection in **osu!lazer**.
-
-- **Skills** — Streams, Jumps / aim, Tech, Finger control, Reading and 6 more. Maps are not picked by
-  tags: every candidate is downloaded and analysed object by object (snaps, spacing, rhythm changes,
-  SV, note density).
-- **"More like these"** — paste links to maps you like and get maps with a similar profile.
-- **Tournament pools** — 32,000+ maps from 450+ tournaments (osu!wiki + Liquipedia): pick NM2 / HD1 /
-  DT3 / TB… slots, stars, player rank range (open, 3/4/5/6-digit), tier and years.
-- **Filters** — stars, BPM and length as two-handle sliders, music genre, words in tags.
-
-**Online version:** https://osu.gravitacia.art — select maps on the website, download them from the
-links, or press "Add to game" to put the selection into osu! through osu!trainer on your computer.
-
-## One-line install
-
-- **Windows** (PowerShell): `irm https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.ps1 | iex`
-  — installs to `%LOCALAPPDATA%\osu-trainer`, adds a shortcut and starts it. Portable Python and
-  Node.js are downloaded into the app folder if missing; nothing is installed system-wide.
-- **macOS / Linux** (needs `python3` 3.9+ and `node` 18+):
-  `curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.sh | sh`
-- **Manually:** `git clone`, then `start.bat` / `./start.sh`. No third-party Python packages needed.
-
-## Safety
-
-`client.realm` is backed up before every write; reads are read-only; writes happen only when the
-database file format matches the supported one (24, Realm 20.1.0 as in lazer). The UI listens on
-`127.0.0.1` only, rejects cross-site requests, and accepts selections only from allowed sites after
-you confirm them.
+- `client.realm` is backed up to `backups/` before every write (the last 10 are kept).
+- Reads are read-only and work while the game is running.
+- Writes happen only if the database file format matches the supported one (currently 24 —
+  Realm 20.1.0, as in lazer). If osu! moves to a new format, the app refuses to write instead of
+  touching the database.
+- The local app listens on `127.0.0.1` only and rejects requests from other websites. Selections are
+  accepted only from sites in the allowed list, and each one has to be confirmed.
 
 ## Data sources
 
-Maps: osu.direct, catboy.best, `.osu` files from osu.ppy.sh (rate-limited). Tournament pools:
-[osu!wiki](https://osu.ppy.sh/wiki/Tournaments) (CC BY-NC 4.0) and [Liquipedia](https://liquipedia.net/osu)
-(CC BY-SA 3.0), queried per the Liquipedia [API terms](https://liquipedia.net/api-terms-of-use).
+- Maps: [osu.direct](https://osu.direct) and [catboy.best](https://catboy.best) mirrors, `.osu` files
+  from [osu.ppy.sh](https://osu.ppy.sh). All requests are rate-limited.
+- Tournament pools: [osu!wiki](https://osu.ppy.sh/wiki/Tournaments) (CC BY-NC 4.0) and
+  [Liquipedia](https://liquipedia.net/osu) (CC BY-SA 3.0). A prebuilt database ships in `data/`;
+  update it from Settings. Liquipedia is queried per its
+  [API terms](https://liquipedia.net/api-terms-of-use): at most one request every 2 seconds, cached.
 
-## Self-hosting
+## Your own website
 
-`python ui.py --server --public-url https://your.domain` runs the website mode (Python only). On a
-server with nginx, one command as root sets everything up:
-`curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/server-install.sh | sh`
-— see [deploy/](deploy/README.md).
+The same code runs as a website (Python only). On a server with nginx, one command as root:
+```sh
+curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/server-install.sh | sh
+```
+Details, HTTPS and updates: [deploy/](deploy/README.md).
+
+## Troubleshooting
+
+| Problem | What to do |
+|---|---|
+| "osu!lazer not found" | Set the folder that contains `client.realm` in Settings. |
+| "Node.js not found" / "dependencies are missing" | Run the install command again. |
+| "Database format is not supported" | A new lazer version changed the database format — update osu!trainer with the same command. |
+| Maps don't show up in the game | Leave gameplay and go to the menu — lazer imports maps only there. |
+| The website can't see the app on "Add to game" | Start osu!trainer and allow local network access if the browser asks; or press "Already installed — open". |
+| Port 8730 is busy | The app picks the next free port, or run `start.bat --port 9000`. |
 
 Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd. MIT licensed.
+
+---
+
+<a name="русский"></a>
+# osu!trainer — по-русски
+
+Подбирает карты osu! под навык, который хочешь тренировать, карты, похожие на любимые, или карты из
+настоящих турнирных пулов — и создаёт из них коллекцию в **osu!lazer**.
+
+- **Навыки** — Streams, Jumps / aim, Tech, Finger control, Reading и ещё 6. Карты выбираются не по
+  тегам: каждая кандидатка скачивается и разбирается по объектам — деления ритма, spacing, смены
+  ритма, SV, плотность нот.
+- **«Хочу похожее»** — вставь ссылки на любимые карты, и найдутся карты с похожим профилем.
+- **Турнирные пулы** — 32 000+ карт из 450+ турниров (osu!wiki + Liquipedia): слоты NM2 / HD1 / DT3 /
+  TB, звёзды, рейтинг участников (open, 3/4/5/6-digit), уровень турнира и годы.
+- **Фильтры** — звёзды, BPM и длина двусторонними ползунками, жанр, слова в тегах.
+
+**Онлайн-версия:** https://osu.gravitacia.art — подбор прямо на сайте; карты можно скачать по ссылкам
+или нажать «Добавить в игру». Кнопка «Инструкция» на сайте объясняет все шаги.
+
+**Установка одной командой.** Windows (PowerShell):
+```powershell
+irm https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.ps1 | iex
+```
+macOS / Linux: `curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.sh | sh`
+
+Программа ставится в `%LOCALAPPDATA%\osu-trainer`, при необходимости докачивает портативные Python и
+Node.js (в систему ничего не ставится), создаёт ярлык и запускается. Повторный запуск команды —
+обновление.
+
+**Как пользоваться:** выбери вкладку «Навыки» или «Турнирные пулы», настрой фильтры (у каждого есть
+подсказка «?»), нажми «Только показать» или «Собрать коллекцию». Во время игры lazer откладывает
+импорт карт — они появятся, когда выйдешь в меню.
+
+**Безопасность:** перед каждой записью `client.realm` копируется в `backups/`; запись разрешена, только
+если формат базы совпадает с поддерживаемым; программа слушает только `127.0.0.1` и принимает подборки
+только с разрешённых сайтов после подтверждения.
+
+---
+
+<a name="español"></a>
+# osu!trainer — en español
+
+Elige mapas de osu! para la habilidad que quieres entrenar, mapas parecidos a los que te gustan o mapas
+de mappools reales de torneos, y crea con ellos una colección en **osu!lazer**.
+
+- **Habilidades** — Streams, Jumps / aim, Tech, Finger control, Reading y 6 más. Los mapas no se eligen
+  por etiquetas: cada candidato se descarga y se analiza objeto por objeto (snaps, spacing, cambios de
+  ritmo, SV, densidad de notas).
+- **«Quiero algo parecido»** — pega enlaces a mapas que te gusten y encuentra mapas con un perfil similar.
+- **Mappools de torneos** — más de 32 000 mapas de más de 450 torneos (osu!wiki + Liquipedia): slots
+  NM2 / HD1 / DT3 / TB, estrellas, rango de los jugadores (open, 3/4/5/6-digit), nivel y años.
+- **Filtros** — estrellas, BPM y duración con deslizadores de dos extremos, género, palabras en etiquetas.
+
+**Versión web:** https://osu.gravitacia.art — elige mapas en la web, descárgalos con los enlaces o pulsa
+«Añadir al juego». El botón «Guía» explica cada paso.
+
+**Instalación con un solo comando.** Windows (PowerShell):
+```powershell
+irm https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.ps1 | iex
+```
+macOS / Linux: `curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.sh | sh`
+
+Se instala en `%LOCALAPPDATA%\osu-trainer`, descarga versiones portátiles de Python y Node.js si hacen
+falta (no instala nada en el sistema), crea un acceso directo y se abre. Volver a ejecutar el comando
+lo actualiza.
+
+**Uso:** elige la pestaña «Habilidades» o «Mappools de torneos», ajusta los filtros (cada uno tiene su
+«?»), pulsa «Solo mostrar» o «Crear colección». Durante el juego osu!lazer pausa las importaciones;
+terminan al volver al menú.
+
+**Seguridad:** antes de cada escritura se copia `client.realm` en `backups/`; solo se escribe si el
+formato de la base coincide con el compatible; la aplicación solo escucha en `127.0.0.1` y acepta
+selecciones solo de sitios permitidos y tras tu confirmación.

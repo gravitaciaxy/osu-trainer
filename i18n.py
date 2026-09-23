@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 """
-Перевод сообщений. Исходные строки - русские, английские - в словаре EN.
+Перевод сообщений. Исходные строки - русские; английские - в словаре EN, испанские - в ES.
+Язык по умолчанию - английский.
 
-Термины osu! (streams, jumps, tech, finger control, sliders, spacing, SV, BPM) в русском тексте
-пишутся по-английски, как их называют игроки; для остального - обычные русские слова.
+Термины osu! (streams, jumps, tech, finger control, sliders, spacing, SV, BPM) во всех языках
+пишутся по-английски, как их называют игроки; для остального - обычные слова языка.
 """
 import threading
 
 _state = threading.local()
+
+LANGS = ("en", "es", "ru")
+DEFAULT_LANG = "en"
 
 EN = {
     "Задача: %s | звёзды %g-%g | карт: %d": "Task: %s | stars %g-%g | maps: %d",
@@ -78,17 +82,99 @@ EN = {
     "Подборка «%s», карт: %d": "Selection \"%s\", maps: %d",
 }
 
+ES = {
+    "Задача: %s | звёзды %g-%g | карт: %d": "Tarea: %s | estrellas %g-%g | mapas: %d",
+    "Читаю библиотеку osu!...": "Leyendo la biblioteca de osu!...",
+    "  установлено сложностей: %d": "  dificultades instaladas: %d",
+    "Строю профиль, карт-образцов: %d...": "Creando un perfil, mapas de referencia: %d...",
+    "  не удалось разобрать карту %s": "  no se pudo analizar el mapa %s",
+    "Не удалось разобрать ни одну карту-образец": "No se pudo analizar ningún mapa de referencia",
+    "  профиль: %.0f BPM, streams %.0f%%, смен ритма %.0f%%, sliders %.0f%%":
+        "  perfil: %.0f BPM, streams %.0f%%, cambios de ritmo %.0f%%, sliders %.0f%%",
+    "Собираю кандидатов...": "Buscando candidatos...",
+    "  подходящих установленных карт: %d": "  mapas instalados que coinciden: %d",
+    "  запросов к зеркалу: %d, кандидатов: %d": "  peticiones al mirror: %d, candidatos: %d",
+    "Кандидатов не найдено - ослабь фильтры": "No se encontraron candidatos: relaja los filtros",
+    "Анализирую карты: %d...": "Analizando mapas: %d...",
+    "  ...%d/%d": "  ...%d/%d",
+    "Ничего не подошло - ослабь фильтры или понизь порог": "Nada coincide: relaja los filtros o baja el umbral",
+    "Отобрано карт: %d": "Mapas seleccionados: %d",
+    "Скачиваю наборы карт: %d...": "Descargando beatmapsets: %d...",
+    "  готово %s (%.1f МБ)": "  listo %s (%.1f MB)",
+    "  не скачался %s": "  no se pudo descargar %s",
+    "Отправляю в osu! наборов: %d...": "Enviando beatmapsets a osu!: %d...",
+    "  osu! добавит их в фоне": "  osu! los importará en segundo plano",
+    "Нет в игре карт: %d, скачивание отключено": "Mapas no instalados: %d, la descarga está desactivada",
+    "Резервная копия базы: %s": "Copia de seguridad de la base de datos: %s",
+    "Коллекция \"%s\" создана: +%d, всего %d": "Colección \"%s\" creada: +%d, total %d",
+    "Коллекция \"%s\" дополнена: +%d, всего %d": "Colección \"%s\" actualizada: +%d, total %d",
+    "Готово.": "Listo.",
+    "Ищу в турнирных пулах: %s": "Buscando en los mappools de torneos: %s",
+    "  проверено %d/%d карт пула, подходящих: %d": "  revisados %d/%d mapas del pool, coinciden: %d",
+    "  карт в выбранных слотах: %d, отобрано: %d": "  mapas en los slots elegidos: %d, seleccionados: %d",
+    "Нужен навык, карты-образцы или турнирные слоты": "Elige una habilidad, mapas de referencia o slots de torneo",
+    "Не найдена папка osu!lazer (client.realm). Укажи её в настройках.":
+        "No se encontró la carpeta de datos de osu!lazer (client.realm). Indícala en los ajustes.",
+    "Не найден Node.js - он нужен для работы с базой osu!. Установи с nodejs.org.":
+        "No se encontró Node.js: hace falta para acceder a la base de datos de osu!. Instálalo desde nodejs.org.",
+    "Ошибка доступа к базе osu!: %s": "Error de la base de datos de osu!: %s",
+    "Турнирные": "Torneo",
+    "Похожие": "Similares",
+    "streams %.0f%% нот, %.0f BPM, самая длинная цепочка %d": "streams %.0f%% de las notas, %.0f BPM, racha más larga %d",
+    "spacing %.1f×, скорость курсора %.0f": "spacing %.1f×, velocidad del cursor %.0f",
+    "spacing в streams %.2f×, streams %.0f%%": "spacing en streams %.2f×, streams %.0f%%",
+    "пик %.1f нот/с, %.0f BPM": "pico %.1f notas/s, %.0f BPM",
+    "%.1f мин, streams %.0f%%, %.1f нот/с": "%.1f min, streams %.0f%%, %.1f notas/s",
+    "разброс SV %.2f, необычных делений ритма %.0f%%": "variación de SV %.2f, snaps inusuales %.0f%%",
+    "смен ритма %.0f%%, разнообразие ритма %.1f": "cambios de ritmo %.0f%%, variedad rítmica %.1f",
+    "AR %.1f, %.1f нот/с": "AR %.1f, %.1f notas/s",
+    "CS %.1f, OD %.1f": "CS %.1f, OD %.1f",
+    "sliders %.0f%%, spacing %.1f×": "sliders %.0f%%, spacing %.1f×",
+    "OD %.1f, %.0f BPM, мало streams": "OD %.1f, %.0f BPM, pocos streams",
+    "похожесть %.0f%% (отличается: %s)": "similitud %.0f%% (difiere en: %s)",
+    "osu!wiki: страниц турниров — %d": "osu!wiki: páginas de torneos — %d",
+    "  osu!wiki: %d/%d страниц": "  osu!wiki: %d/%d páginas",
+    "  ошибка разбора %s: %s": "  error al analizar %s: %s",
+    "  osu!wiki: записей %d": "  osu!wiki: %d entradas",
+    "Liquipedia: загрузка (не чаще 1 запроса в 2 с, по правилам API)...":
+        "Liquipedia: descargando (máx. 1 petición cada 2 s, según sus normas de API)...",
+    "  Liquipedia: турниров osu!standard: %d": "  Liquipedia: %d torneos de osu!standard",
+    "  Liquipedia: %d/%d страниц": "  Liquipedia: %d/%d páginas",
+    "Liquipedia не отвечает (код %s)": "Liquipedia no responde (código %s)",
+    "  Liquipedia: записей %d": "  Liquipedia: %d entradas",
+    "Итого: карт в пулах — %d, турнирных изданий — %d": "Total: mapas en pools — %d, ediciones de torneos — %d",
+    "Отменено.": "Cancelado.",
+    "Ошибка: %s": "Error: %s",
+    "Загружаю подборку с %s...": "Cargando la selección desde %s...",
+    "Сайт %s не в списке разрешённых": "El sitio %s no está en la lista de permitidos",
+    "Подборка не найдена или устарела": "La selección no existe o ha caducado",
+    "Подборка «%s», карт: %d": "Selección \"%s\", mapas: %d",
+}
+
+TRANSLATIONS = {"en": EN, "es": ES}
+
+
+def normalize(lang):
+    lang = str(lang or "").lower()[:2]
+    return lang if lang in LANGS else DEFAULT_LANG
+
 
 def set_lang(lang):
-    _state.lang = "en" if str(lang).lower().startswith("en") else "ru"
+    _state.lang = normalize(lang)
 
 
 def get_lang():
-    return getattr(_state, "lang", "ru")
+    return getattr(_state, "lang", DEFAULT_LANG)
+
+
+def pick(lang, ru, en, es):
+    """Выбор одной из трёх готовых строк по языку (для коротких подписей вне словарей)."""
+    return {"ru": ru, "es": es}.get(normalize(lang), en)
 
 
 def _(text, *args):
     """Переводит строку-шаблон на текущий язык потока и подставляет аргументы."""
-    if get_lang() == "en":
-        text = EN.get(text, text)
+    table = TRANSLATIONS.get(get_lang())
+    if table is not None:
+        text = table.get(text) or EN.get(text, text)
     return text % args if args else text
