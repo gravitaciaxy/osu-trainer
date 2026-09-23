@@ -9,7 +9,8 @@
 #   - systemd-юнит osu-trainer на 127.0.0.1:3002 (только Python, без Node.js)
 #   - nginx: создаёт sites-available/osu, если его ещё нет; чужие конфиги не трогает,
 #     перед перезагрузкой проверяет nginx -t и при ошибке откатывает свой файл
-# Настройки через переменные: DOMAIN (osu.gravitacia.art), PORT (3002), APP (/opt/osu-trainer)
+# Настройки через переменные: DOMAIN (osu.gravitacia.art), PORT (3002), APP (/opt/osu-trainer),
+# REF (коммит или ветка; по умолчанию - последний коммит main)
 set -eu
 
 REPO="gravitaciaxy/osu-trainer"
@@ -27,8 +28,14 @@ python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || { s
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
-say "Скачиваю код с GitHub..."
-curl -fsSL -o "$TMP/app.zip" "https://github.com/$REPO/archive/refs/heads/main.zip"
+# архив конкретного коммита: архив ветки main GitHub несколько минут отдаёт из кэша
+REF="${REF:-}"
+if [ -z "$REF" ]; then
+    REF="$(curl -fsSL -H 'Accept: application/vnd.github.sha' "https://api.github.com/repos/$REPO/commits/main" 2>/dev/null || true)"
+fi
+[ -n "$REF" ] || REF="refs/heads/main"
+say "Скачиваю код с GitHub ($REF)..."
+curl -fsSL -o "$TMP/app.zip" "https://github.com/$REPO/archive/$REF.zip"
 python3 -m zipfile -e "$TMP/app.zip" "$TMP/src"
 SRC="$(find "$TMP/src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 
