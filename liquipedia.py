@@ -15,11 +15,8 @@ import time
 import urllib.parse
 
 import config
-from i18n import EN, _
+from i18n import _
 
-EN.update({"Liquipedia не отвечает (код %s)": "Liquipedia is not responding (code %s)"})
-
-API = "https://liquipedia.net/osu/api.php"
 CACHE = os.path.join(config.CACHE_DIR, "liquipedia")
 PAGES_JSON = os.path.join(CACHE, "pages.json")
 DELAY = 2.5
@@ -39,8 +36,7 @@ TIERS = {"1": "S", "2": "A", "3": "B", "4": "C", "5": "D"}
 class Client:
     """Клиент MediaWiki API: одно постоянное соединение, gzip, пауза между запросами."""
 
-    def __init__(self, log=print):
-        self.log = log
+    def __init__(self):
         self.last = 0.0
         self.conn = None
         self.headers = {"User-Agent": config.liquipedia_user_agent(), "Accept-Encoding": "gzip"}
@@ -92,7 +88,7 @@ def fetch_pages(force=False, log=print, max_age_days=7):
         if age < max_age_days:
             return json.load(open(PAGES_JSON, encoding="utf-8"))
     os.makedirs(CACHE, exist_ok=True)
-    cl = Client(log)
+    cl = Client()
     titles, cont = [], {}
     while True:
         d = cl.query(action="query", list="categorymembers", cmtitle="Category:Osu!standard Tournaments",
@@ -190,7 +186,7 @@ def parse_page(title, text):
             if nm:
                 collecting_names[int(nm.group(1))] = _clean(nm.group(2))
                 continue
-            if s.startswith("}}") or s.startswith("|This") or s.startswith("|"):
+            if s.startswith("}}") or s.startswith("|"):
                 if s.startswith("}}"):
                     collecting_names = None
                 continue

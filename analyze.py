@@ -1,6 +1,5 @@
 """Парсер .osu и расчёт метрик скилл-сетов для osu!standard."""
 import math
-import re
 from collections import Counter
 
 

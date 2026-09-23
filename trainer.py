@@ -109,8 +109,7 @@ def coerce_params(p, server=False):
         setattr(a, key, value)
     if server:
         for key, cap in SERVER_LIMITS.items():
-            if getattr(a, key, None) is not None:
-                setattr(a, key, min(getattr(a, key), cap))
+            setattr(a, key, min(getattr(a, key), cap))
         a.server = True
         a.dry_run = True
         a.local_only = a.skip_owned = False

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """Навыки: поисковые запросы, формулы оценки карты по метрикам, описания для интерфейса."""
-from i18n import EN, _, get_lang
+from i18n import _, get_lang
 
 
 def clamp(v, lo=0.0, hi=1.0):
@@ -13,21 +13,6 @@ def sc(v, lo, hi):
         return 0.0
     return clamp((v - lo) / (hi - lo))
 
-
-EN.update({
-    "streams %.0f%% нот, %.0f BPM, самая длинная цепочка %d": "streams %.0f%% of notes, %.0f BPM, longest run %d",
-    "spacing %.1f×, скорость курсора %.0f": "spacing %.1f×, cursor speed %.0f",
-    "spacing в streams %.2f×, streams %.0f%%": "stream spacing %.2f×, streams %.0f%%",
-    "пик %.1f нот/с, %.0f BPM": "peak %.1f notes/s, %.0f BPM",
-    "%.1f мин, streams %.0f%%, %.1f нот/с": "%.1f min, streams %.0f%%, %.1f notes/s",
-    "разброс SV %.2f, необычных делений ритма %.0f%%": "SV spread %.2f, unusual snaps %.0f%%",
-    "смен ритма %.0f%%, разнообразие ритма %.1f": "rhythm changes %.0f%%, rhythm variety %.1f",
-    "AR %.1f, %.1f нот/с": "AR %.1f, %.1f notes/s",
-    "CS %.1f, OD %.1f": "CS %.1f, OD %.1f",
-    "sliders %.0f%%, spacing %.1f×": "sliders %.0f%%, spacing %.1f×",
-    "OD %.1f, %.0f BPM, мало streams": "OD %.1f, %.0f BPM, few streams",
-    "похожесть %.0f%% (отличается: %s)": "similarity %.0f%% (differs in: %s)",
-})
 
 # понятные названия метрик для пояснений «чем отличается»
 FEATURE_NAMES = {

@@ -7,6 +7,7 @@
 турнира по Liquipedia (S/A/B/C/D), если известен.
 """
 import concurrent.futures as cf
+import gzip
 import json
 import os
 import re
@@ -17,9 +18,7 @@ import time
 import config
 import liquipedia
 import net
-from i18n import EN, _
-
-EN.update({"  ошибка разбора %s: %s": "  parse error in %s: %s"})
+from i18n import _
 
 CACHE = config.CACHE_DIR
 WIKI_DIR = os.path.join(CACHE, "wiki")
@@ -314,7 +313,6 @@ def _seed(target, name):
     src = os.path.join(SEED_DIR, name + ".gz")
     if os.path.exists(target) or not os.path.exists(src):
         return os.path.exists(target)
-    import gzip
     os.makedirs(os.path.dirname(target), exist_ok=True)
     with gzip.open(src, "rb") as f, open(target + ".tmp", "wb") as out:
         out.write(f.read())

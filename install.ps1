@@ -97,16 +97,16 @@ try {
     } finally { Pop-Location }
 
     if ($env:OSU_TRAINER_NO_SHORTCUTS -ne '1') {
-    Say 'Создаю ярлыки в меню «Пуск» и на рабочем столе...'
-    $shell = New-Object -ComObject WScript.Shell
-    $icon = Join-Path $env:LOCALAPPDATA 'osulazer\current\osu!.exe'
-    foreach ($folder in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
-        $lnk = $shell.CreateShortcut((Join-Path $folder 'osu!trainer.lnk'))
-        $lnk.TargetPath = Join-Path $Dir 'start.bat'
-        $lnk.WorkingDirectory = $Dir
-        if (Test-Path $icon) { $lnk.IconLocation = "$icon,0" }
-        $lnk.Save()
-    }
+        Say 'Создаю ярлыки в меню «Пуск» и на рабочем столе...'
+        $shell = New-Object -ComObject WScript.Shell
+        $icon = Join-Path $env:LOCALAPPDATA 'osulazer\current\osu!.exe'
+        foreach ($folder in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
+            $lnk = $shell.CreateShortcut((Join-Path $folder 'osu!trainer.lnk'))
+            $lnk.TargetPath = Join-Path $Dir 'start.bat'
+            $lnk.WorkingDirectory = $Dir
+            if (Test-Path $icon) { $lnk.IconLocation = "$icon,0" }
+            $lnk.Save()
+        }
     }
 
     Say "Готово! Программа в $Dir"

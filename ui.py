@@ -63,7 +63,6 @@ class Job:
         self.result = None
         self.error = None
         self.cancel = False
-        self.created = time.time()
         self.finished = None
         self.deadline = None
 
@@ -184,12 +183,12 @@ def allowed_site(site):
 
 
 def fetch_remote_share(site, sid):
-    site = allowed_site(site)
-    if not site:
+    base = allowed_site(site)
+    if not base:
         raise RuntimeError(i18n._("Сайт %s не в списке разрешённых", site))
     if not ID_RE.match(sid or ""):
         raise RuntimeError(i18n._("Подборка не найдена или устарела"))
-    r = net.fetch(site + "/api/share/" + sid, timeout=30)
+    r = net.fetch(base + "/api/share/" + sid, timeout=30)
     if r.status_code != 200:
         raise RuntimeError(i18n._("Подборка не найдена или устарела"))
     data = r.json()
@@ -225,11 +224,9 @@ def run_import(site, sid, lang, name_override=None):
         i18n.set_lang(lang)
         job.log(i18n._("Загружаю подборку с %s...", site))
         name, maps = fetch_remote_share(site, sid)
-        name = (name_override or name)[:100]
+        name = name_override or name
         job.log(i18n._("Подборка «%s», карт: %d", name, len(maps)))
-        result = trainer.apply(maps, name, a, log=job.log)
-        return dict(name=name, picked=[dict(m, owned=m.get("owned")) for m in result["picked"]],
-                    downloaded=result["downloaded"], collection=result["collection"])
+        return trainer.apply(maps, name, a, log=job.log)
 
     return new_job("import", target)
 
@@ -257,7 +254,6 @@ def install_commands():
 
 def init_data(lang):
     i18n.set_lang(lang)
-    st = None
     try:
         st = pools.stats() if pools.available() else None
     except Exception:
@@ -337,9 +333,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return {}
 
     def do_OPTIONS(self):
-        if urllib.parse.urlparse(self.path).path == "/api/ping" and self._cors():
+        cors = self._cors()
+        if urllib.parse.urlparse(self.path).path == "/api/ping" and cors:
             self.send_response(204)
-            for k, v in self._cors().items():
+            for k, v in cors.items():
                 self.send_header(k, v)
             self.send_header("Content-Length", "0")
             self.end_headers()

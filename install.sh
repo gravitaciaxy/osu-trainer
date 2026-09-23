@@ -19,7 +19,8 @@ node -e 'process.exit(+process.versions.node.split(".")[0] >= 18 ? 0 : 1)' || { 
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 say "Скачиваю программу / downloading..."
-curl -fsSL -o "$TMP/app.zip" "https://github.com/$REPO/releases/latest/download/osu-trainer.zip" 2>/dev/null ||   curl -fsSL -o "$TMP/app.zip" "https://github.com/$REPO/archive/refs/heads/main.zip"
+curl -fsSL -o "$TMP/app.zip" "https://github.com/$REPO/releases/latest/download/osu-trainer.zip" 2>/dev/null ||
+  curl -fsSL -o "$TMP/app.zip" "https://github.com/$REPO/archive/refs/heads/main.zip"
 python3 -m zipfile -e "$TMP/app.zip" "$TMP/app"
 SRC="$(find "$TMP/app" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 mkdir -p "$DIR"

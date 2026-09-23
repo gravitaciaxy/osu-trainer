@@ -837,11 +837,11 @@ function renderEnv(){
   const p = DATA.pool;
   $('poolinfo').textContent = p ? t('pools_info', {m:mapsText(p.entries), e:p.editions, d:p.updated}) : t('pools_empty');
 
-  let msg = '', cls = 'banner err';
+  let msg = '';
   if (!e.osu_data) msg = t('banner_data');
   else if (!e.node || !e.realm_module) msg = t('banner_node');
   else if (!e.realm_ok) msg = t('banner_fmt');
-  $('banner').hidden = !msg; $('banner').className = cls; $('bannertext').textContent = msg; $('bannerbtn').hidden = false;
+  $('banner').hidden = !msg; $('banner').className = 'banner err'; $('bannertext').textContent = msg; $('bannerbtn').hidden = false;
 }
 
 function updateButtons(){
