@@ -6,7 +6,7 @@ HOST="${1:-vps}"
 APP=/opt/osu-trainer
 cd "$(dirname "$0")/.."
 
-FILES="analyze.py config.py i18n.py liquipedia.py net.py pools.py skills.py trainer.py ui.py index.html data"
+FILES="analyze.py config.py feedback.py i18n.py liquipedia.py net.py pools.py skills.py trainer.py ui.py index.html data"
 echo "-> копирую код на $HOST:$APP"
 tar czf - $FILES | ssh "$HOST" "set -e
   id osutrainer >/dev/null 2>&1 || useradd --system --home $APP --shell /usr/sbin/nologin osutrainer

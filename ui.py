@@ -26,6 +26,7 @@ import webbrowser
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import config  # noqa: E402
+import feedback  # noqa: E402
 import i18n  # noqa: E402
 import net  # noqa: E402
 import pools  # noqa: E402
@@ -417,6 +418,21 @@ class Handler(http.server.BaseHTTPRequestHandler):
             job = JOBS.get(str(body.get("id", "")))
             if job:
                 job.cancel = True
+            return self._send(200, {"ok": True})
+        if path == "/api/feedback":
+            if body.get("website"):              # скрытое поле-ловушка: его заполняют только боты
+                return self._send(200, {"ok": True})
+            try:
+                entry = feedback.clean(body)
+            except ValueError:
+                return self._send(400, {"error": "empty"})
+            if MODE == "local":                  # токена бота здесь нет - пересылаем на сайт
+                code = feedback.forward(entry)
+                return self._send(200 if code == 200 else code, {"ok": code == 200})
+            if not feedback.allow(self.client_ip()):
+                return self._send(429, {"error": "too many requests"})
+            feedback.save(entry, self.client_ip())
+            feedback.notify(entry)
             return self._send(200, {"ok": True})
 
         if MODE != "local":

@@ -193,6 +193,7 @@
   <div class="hbtns">
     <div class="seg" id="langseg"><button data-lang="en">EN</button><button data-lang="es">ES</button><button data-lang="ru">RU</button></div>
     <button class="iconbtn" onclick="openGuide()" data-i18n="guide"></button>
+    <button class="iconbtn" onclick="openFeedback()" data-i18n="feedback"></button>
     <button class="iconbtn" id="btn-settings" onclick="openSettings()" data-i18n="settings" hidden></button>
   </div>
 </header>
@@ -415,6 +416,27 @@
   </div>
 </div>
 
+<!-- обратная связь -->
+<div class="modal" id="feedback" onclick="if(event.target===this)closeModal('feedback')">
+  <div class="box">
+    <h3 data-i18n="fb_title"></h3>
+    <p data-i18n="fb_intro"></p>
+    <div class="chips" id="fbkinds"></div>
+    <textarea id="fbtext" data-i18n-ph="fb_text_ph" maxlength="3000" style="min-height:110px;margin-top:12px"></textarea>
+    <div class="lbl"><span data-i18n="fb_contact"></span></div>
+    <input type="text" id="fbcontact" data-i18n-ph="fb_contact_ph" maxlength="200">
+    <input type="text" id="fbwebsite" name="website" tabindex="-1" autocomplete="off" aria-hidden="true"
+           style="position:absolute;left:-9999px;width:1px;height:1px">
+    <div class="muted" style="margin-top:8px" data-i18n="fb_note"></div>
+    <div class="actions">
+      <button class="btn go" id="btn-fb" onclick="sendFeedback()" data-i18n="fb_send"></button>
+      <button class="btn alt" onclick="closeModal('feedback')" data-i18n="close"></button>
+    </div>
+    <div class="state" id="fbstate"></div>
+    <div class="muted" style="margin-top:10px"><a id="fbgithub" target="_blank" rel="noopener" data-i18n="fb_github"></a></div>
+  </div>
+</div>
+
 <div id="tooltip" role="tooltip"></div>
 
 <script>
@@ -516,6 +538,14 @@ ru: {
   tip_pools:'Своя база турнирных пулов из osu!wiki и Liquipedia. Обновляй раз в пару недель, чтобы подтянуть новые турниры.',
   tip_add:'Кладёт подборку в игру через osu!trainer на твоём компьютере. Если его нет — покажем, как поставить одной командой.',
   add_wait:'сначала подбери карты кнопкой «Подобрать карты»',
+  feedback:'Обратная связь', fb_title:'Обратная связь',
+  fb_intro:'Нашёл ошибку, есть идея или карты не подошли? Напиши — каждое сообщение читаем.',
+  fb_kind_idea:'Идея', fb_kind_bug:'Ошибка', fb_kind_maps:'Карты не подошли', fb_kind_other:'Другое',
+  fb_text_ph:'Что случилось или чего не хватает?', fb_contact:'Контакт (необязательно)',
+  fb_contact_ph:'Discord, Telegram или почта — если нужен ответ',
+  fb_note:'К сообщению прикладываются язык, версия и твоя последняя подборка — чтобы понять, что именно ты видел.',
+  fb_send:'Отправить', fb_sent:'Спасибо! Сообщение отправлено.', fb_empty:'Сначала напиши пару слов.',
+  fb_error:'Не получилось отправить. Попробуй позже или напиши на GitHub.', fb_github:'Или создай issue на GitHub',
   guide:'Инструкция', how_it_works:'Как это работает', guide_title:'Как пользоваться osu!trainer',
   guide_html:'<p>osu!trainer подбирает карты osu! под навык, который хочешь тренировать, карты, похожие на твои любимые, или карты из настоящих турнирных пулов, и превращает их в коллекцию в <b>osu!lazer</b>.</p>' +
     '<h4>1. Подбор</h4><ol>' +
@@ -632,6 +662,14 @@ en: {
   tip_pools:'Own database of tournament pools from osu!wiki and Liquipedia. Update every couple of weeks to pick up new tournaments.',
   tip_add:'Puts the selection into your game through osu!trainer on your computer. If it is not installed, you will see how to install it with one command.',
   add_wait:'find maps first with the "Find maps" button',
+  feedback:'Feedback', fb_title:'Send feedback',
+  fb_intro:'Found a bug, have an idea, or the maps didn’t fit? Tell us — every message is read.',
+  fb_kind_idea:'Idea', fb_kind_bug:'Bug', fb_kind_maps:'Maps didn’t fit', fb_kind_other:'Other',
+  fb_text_ph:'What happened, or what would you like to see?', fb_contact:'Contact (optional)',
+  fb_contact_ph:'Discord, Telegram or email — if you want a reply',
+  fb_note:'Your language, app version and last selection are attached so we can see what you saw.',
+  fb_send:'Send', fb_sent:'Thanks! Your message was sent.', fb_empty:'Write a few words first.',
+  fb_error:'Couldn’t send the message. Try again later or open an issue on GitHub.', fb_github:'Or open an issue on GitHub',
   guide:'Guide', how_it_works:'How it works', guide_title:'How to use osu!trainer',
   guide_html:'<p>osu!trainer picks osu! maps for the skill you want to practise, maps similar to ones you like, or maps from real tournament pools, and turns them into a collection in <b>osu!lazer</b>.</p>' +
     '<h4>1. Pick maps</h4><ol>' +
@@ -748,6 +786,14 @@ es: {
   tip_pools:'Base propia de mappools de torneos de la osu!wiki y Liquipedia. Actualízala cada par de semanas para añadir torneos nuevos.',
   tip_add:'Mete la selección en el juego a través de osu!trainer en tu ordenador. Si no lo tienes, verás cómo instalarlo con un solo comando.',
   add_wait:'primero busca mapas con el botón «Buscar mapas»',
+  feedback:'Comentarios', fb_title:'Enviar comentarios',
+  fb_intro:'¿Encontraste un error, tienes una idea o los mapas no encajaron? Cuéntanos: leemos cada mensaje.',
+  fb_kind_idea:'Idea', fb_kind_bug:'Error', fb_kind_maps:'Los mapas no encajan', fb_kind_other:'Otro',
+  fb_text_ph:'¿Qué pasó o qué te gustaría ver?', fb_contact:'Contacto (opcional)',
+  fb_contact_ph:'Discord, Telegram o email, si quieres respuesta',
+  fb_note:'Se adjuntan tu idioma, la versión y tu última selección para ver lo mismo que tú.',
+  fb_send:'Enviar', fb_sent:'¡Gracias! Mensaje enviado.', fb_empty:'Escribe algo primero.',
+  fb_error:'No se pudo enviar. Inténtalo más tarde o abre un issue en GitHub.', fb_github:'O abre un issue en GitHub',
   guide:'Guía', how_it_works:'Cómo funciona', guide_title:'Cómo usar osu!trainer',
   guide_html:'<p>osu!trainer elige mapas de osu! para la habilidad que quieres entrenar, mapas parecidos a los que te gustan o mapas de mappools reales de torneos, y los convierte en una colección de <b>osu!lazer</b>.</p>' +
     '<h4>1. Elegir mapas</h4><ol>' +
@@ -864,6 +910,7 @@ function applyLang(){
   if (IMPORT && IMPORT.preview) showImport();
   if (DATA) updateShare();
   if ($('guide').classList.contains('open')) openGuide();
+  if ($('feedback').classList.contains('open')) openFeedback();
 }
 
 /* ============================== подсказки ============================== */
@@ -1068,7 +1115,7 @@ function params(dry){
 
 async function run(dry){
   const p = params(dry); if (!p) return;
-  store(); LASTRESULT = null;
+  store(); LASTRESULT = null; LASTPARAMS = p;
   $('log').textContent = ''; $('results').querySelector('tbody').innerHTML = ''; $('rescount').textContent = '';
   $('noresults').hidden = false; updateShare();
   setState(t('working'), '');
@@ -1201,7 +1248,32 @@ async function checkShare(){
 /* ============================== настройки ============================== */
 function openSettings(){ $('settings').classList.add('open'); }
 function closeModal(id){ $(id).classList.remove('open'); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal('settings'); closeModal('installbox'); closeModal('guide'); } });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal('settings'); closeModal('installbox'); closeModal('guide'); closeModal('feedback'); } });
+/* ============================== обратная связь ============================== */
+let FBKIND = 'idea', LASTPARAMS = null;
+function openFeedback(){
+  const box = $('fbkinds'); box.innerHTML = '';
+  ['idea', 'bug', 'maps', 'other'].forEach(k => box.appendChild(chip(t('fb_kind_' + k),
+    { on:FBKIND === k, click:() => { FBKIND = k; openFeedback(); } })));
+  const repo = (DATA && DATA.install && DATA.install.repo) || 'https://github.com/gravitaciaxy/osu-trainer';
+  $('fbgithub').href = repo + '/issues/new';
+  fbState('', '');
+  $('feedback').classList.add('open');
+}
+function fbState(text, cls){ $('fbstate').textContent = text; $('fbstate').className = 'state ' + cls; }
+async function sendFeedback(){
+  const text = $('fbtext').value.trim();
+  if (text.length < 3) { fbState(t('fb_empty'), 'err'); return; }
+  const context = { mode:SITE ? 'site' : 'app', lang:LANG, version:DATA && DATA.version,
+                    share:LASTRESULT && LASTRESULT.share, params:LASTPARAMS ? JSON.stringify(LASTPARAMS).slice(0, 380) : '' };
+  $('btn-fb').disabled = true;
+  try {
+    await api('/api/feedback', { kind:FBKIND, text, contact:$('fbcontact').value.trim(), website:$('fbwebsite').value, context });
+    $('fbtext').value = ''; fbState(t('fb_sent'), 'ok');
+  } catch(e) { fbState(e.status === 429 ? t('too_many') : t('fb_error'), 'err'); }
+  $('btn-fb').disabled = false;
+}
+
 function openGuide(){
   const ins = (DATA && DATA.install) || {};
   $('guidebody').innerHTML = t('guide_html', {win:esc(ins.windows || ''), unix:esc(ins.unix || ''), repo:esc(ins.repo || '#')});

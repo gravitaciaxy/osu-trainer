@@ -76,6 +76,26 @@ def fetch(url, params=None, headers=None, timeout=30, stream=False, gzip_ok=True
         return Response(e.code, e.headers or {}, body=body)
 
 
+def post_json(url, payload, headers=None, timeout=20):
+    """HTTP POST с JSON. Возвращает Response (в том числе для 4xx/5xx) или бросает OSError."""
+    h = dict(HEAD)
+    h["Content-Type"] = "application/json"
+    if headers:
+        h.update(headers)
+    data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers=h, method="POST")
+    try:
+        raw = urllib.request.urlopen(req, timeout=timeout, context=_SSL)
+        return Response(raw.status, raw.headers, raw=raw)
+    except urllib.error.HTTPError as e:
+        body = b""
+        try:
+            body = e.read()
+        except Exception:
+            pass
+        return Response(e.code, e.headers or {}, body=body)
+
+
 class Bucket:
     """Ограничитель: N запросов в минуту + защита от всплесков."""
 
