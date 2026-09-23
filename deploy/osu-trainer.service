@@ -1,0 +1,26 @@
+# systemd-юнит сайта osu!trainer (серверный режим за nginx).
+# Установка: см. deploy/README.md
+[Unit]
+Description=osu!trainer website (server mode)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=osutrainer
+Group=osutrainer
+WorkingDirectory=/opt/osu-trainer
+ExecStart=/usr/bin/python3 /opt/osu-trainer/ui.py --server --port 3002 --public-url https://osu.gravitacia.art
+Restart=on-failure
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+MemoryMax=450M
+CPUQuota=80%
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/opt/osu-trainer/cache
+
+[Install]
+WantedBy=multi-user.target

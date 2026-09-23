@@ -1,0 +1,13 @@
+{
+  "name": "osu-trainer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Pick osu! maps by skill set or tournament slot and build osu!lazer collections",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "realm": "20.1.0"
+  }
+}

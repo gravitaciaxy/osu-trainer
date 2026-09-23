@@ -1,0 +1,10 @@
+cache/
+downloads/
+backups/
+dist/
+runtime/
+node_modules/
+__pycache__/
+config.json
+last_run.json
+*.log

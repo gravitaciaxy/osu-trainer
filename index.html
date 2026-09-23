@@ -1,0 +1,1042 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>osu!trainer</title>
+<meta name="description" content="Подбор карт osu! по навыку, похожести и турнирным пулам с готовой коллекцией в osu!lazer">
+<style>
+  :root{
+    --bg:#161214; --panel:#221b1f; --panel2:#2c2328; --line:#3b2f36; --line2:#4a3b44;
+    --text:#f3eaef; --dim:#ab99a2; --faint:#7d6c75;
+    --accent:#ff66aa; --accent-ink:#2a0d1b; --accent2:#66ccff; --ok:#7ddf90; --warn:#ffcc66; --err:#ff8a8a;
+    --radius:10px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text)}
+  body{font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;min-height:100vh;display:flex;flex-direction:column}
+  button,input,textarea{font:inherit;color:inherit}
+  a{color:var(--accent2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  [hidden]{display:none !important}
+
+  header{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);
+         border-bottom:1px solid var(--line);position:sticky;top:0;z-index:20;flex-wrap:wrap}
+  header h1{margin:0;font-size:18px;letter-spacing:.3px;white-space:nowrap}
+  header h1 b{color:var(--accent)}
+  header h1 small{color:var(--faint);font-size:11px;font-weight:400;margin-left:6px}
+  header .info{color:var(--dim);font-size:12px;flex:1;min-width:160px}
+  .hbtns{display:flex;gap:6px;align-items:center}
+  .seg{display:flex;border:1px solid var(--line2);border-radius:8px;overflow:hidden}
+  .seg button{background:none;border:0;padding:5px 10px;color:var(--dim);cursor:pointer;font-size:12px}
+  .seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+  .iconbtn{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:5px 10px;
+           cursor:pointer;color:var(--text);font-size:12px}
+  .iconbtn:hover{border-color:var(--accent)}
+
+  .banner{margin:12px 16px 0;padding:10px 14px;border-radius:var(--radius);border:1px solid #6b4a1f;
+          background:#2d2216;color:var(--warn);display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+  .banner.err{border-color:#6b2a2a;background:#2d1818;color:var(--err)}
+  .banner.info{border-color:#28465a;background:#152129;color:#cfe9f7}
+  .banner span{flex:1;min-width:200px}
+
+  main{display:grid;grid-template-columns:minmax(380px,500px) minmax(0,1fr);gap:16px;padding:16px;
+       align-items:start;flex:1;width:100%;max-width:1500px;margin:0 auto}
+  @media (max-width:980px){ main{grid-template-columns:minmax(0,1fr)} }
+  @media (max-width:520px){ main{padding:10px;gap:10px} header{padding:10px 12px} }
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px;margin-bottom:14px}
+  .card h2{margin:0 0 10px;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
+           display:flex;align-items:center;gap:6px;font-weight:600;flex-wrap:wrap}
+  .card h2 .sub{text-transform:none;letter-spacing:0;color:var(--faint);font-weight:400}
+  .sticky{position:sticky;top:72px}
+  @media (max-width:980px){ .sticky{position:static} }
+
+  .tabs{display:flex;gap:6px;margin-bottom:6px}
+  .tabs button{flex:1;padding:9px;border:1px solid var(--line2);background:var(--panel2);color:var(--dim);
+               border-radius:8px;cursor:pointer;font-size:13px}
+  .tabs button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+
+  .lbl{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--dim);margin:12px 0 5px}
+  .lbl .val{margin-left:auto;color:var(--text);font-variant-numeric:tabular-nums;font-size:12px}
+  .help{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
+        border:1px solid var(--line2);color:var(--faint);font-size:10px;font-weight:700;cursor:help;flex:none;user-select:none}
+  .help:hover,.help:focus{border-color:var(--accent);color:var(--accent);outline:none}
+  input[type=text],input[type=number],textarea{width:100%;min-width:0;padding:7px 9px;background:var(--panel2);
+        border:1px solid var(--line2);border-radius:7px;color:var(--text);font-size:13px}
+  input::placeholder,textarea::placeholder{color:var(--faint)}
+  textarea{min-height:58px;resize:vertical;line-height:1.4}
+  input:focus,textarea:focus{outline:none;border-color:var(--accent)}
+  .row{display:flex;gap:10px}
+  .row>*{flex:1;min-width:0}
+  @media (max-width:420px){ .row.wrap{flex-wrap:wrap} .row.wrap>*{flex:1 1 45%} }
+
+  /* двусторонний ползунок */
+  .range{position:relative;height:26px;margin:0 8px}
+  .range .track{position:absolute;left:0;right:0;top:11px;height:4px;border-radius:2px;background:var(--line2)}
+  .range .fill{position:absolute;top:11px;height:4px;border-radius:2px;background:var(--accent)}
+  .range input[type=range]{position:absolute;left:-8px;width:calc(100% + 16px);top:0;height:26px;margin:0;
+        background:none;pointer-events:none;-webkit-appearance:none;appearance:none}
+  .range input[type=range]::-webkit-slider-runnable-track{background:none;height:26px}
+  .range input[type=range]::-moz-range-track{background:none;height:26px}
+  .range input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;pointer-events:auto;width:16px;height:16px;
+        margin-top:5px;border-radius:50%;background:var(--text);border:3px solid var(--accent);cursor:grab}
+  .range input[type=range]::-moz-range-thumb{pointer-events:auto;width:12px;height:12px;border-radius:50%;
+        background:var(--text);border:3px solid var(--accent);cursor:grab}
+  .range input[type=range]:focus{outline:none}
+  .range input[type=range]:focus-visible::-webkit-slider-thumb{box-shadow:0 0 0 3px #ff66aa55}
+  .range input[type=range]:focus-visible::-moz-range-thumb{box-shadow:0 0 0 3px #ff66aa55}
+
+  .chips{display:flex;flex-wrap:wrap;gap:6px}
+  .chip{padding:5px 10px;border:1px solid var(--line2);border-radius:20px;background:var(--panel2);
+        color:var(--dim);cursor:pointer;font-size:12px;user-select:none;line-height:1.3}
+  .chip:hover{border-color:var(--accent)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  .chip small{opacity:.65;margin-left:4px;font-weight:400}
+  .slotgrid{display:flex;flex-direction:column;gap:6px}
+  .slotrow{display:flex;gap:6px;align-items:flex-start}
+  .slotrow .mod{width:34px;flex:none;padding:5px 0;color:var(--dim);font-weight:700;font-size:12px;cursor:pointer;
+                border:0;background:none;text-align:left}
+  .slotrow .mod:hover{color:var(--accent)}
+  .slotrow .chips{flex:1}
+
+  .flags{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px}
+  .flag{display:flex;align-items:center;gap:6px;font-size:12px;cursor:pointer}
+  .flag input{accent-color:var(--accent);margin:0}
+
+  details{margin-top:12px;border-top:1px solid var(--line);padding-top:8px}
+  details summary{cursor:pointer;color:var(--dim);font-size:12px;user-select:none}
+  details summary:hover{color:var(--text)}
+
+  .block{margin:14px 0 0;background:var(--panel2);border:1px solid var(--line);border-radius:var(--radius);padding:12px}
+  .block h3{margin:0;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--faint);font-weight:600}
+  .block input[type=text],.block input[type=number]{background:var(--panel)}
+  .actions{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+  .btn{padding:10px 14px;border-radius:8px;cursor:pointer;font-size:13px;border:1px solid var(--line2);
+       background:var(--panel);color:var(--text)}
+  .btn:hover:not(:disabled){border-color:var(--accent)}
+  .btn.go{flex:2 1 160px;border:none;background:var(--accent);color:var(--accent-ink);font-weight:700;font-size:14px}
+  .btn.alt{flex:1 1 110px}
+  .btn.small{padding:6px 10px;font-size:12px;flex:none}
+  .btn:disabled{opacity:.45;cursor:default}
+  .state{font-size:12px;color:var(--dim);margin-top:8px}
+  .state:empty{display:none}
+  .state.err{color:var(--err)} .state.ok{color:var(--ok)}
+
+  .picker{position:relative}
+  .picked{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  .picked:empty{display:none}
+  .suggest{position:absolute;left:0;right:0;top:100%;margin-top:2px;background:var(--panel);border:1px solid var(--line2);
+           border-radius:8px;max-height:220px;overflow:auto;z-index:15;display:none;box-shadow:0 8px 24px #0008}
+  .suggest div{padding:6px 10px;cursor:pointer;font-size:12px}
+  .suggest div:hover,.suggest div.hl{background:var(--panel2);color:var(--accent)}
+
+  #log{background:#110d0f;border:1px solid var(--line);border-radius:8px;padding:10px;height:240px;overflow:auto;
+       font:12px/1.5 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;word-break:break-word;color:#d7c9d0}
+  .tablewrap{overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{color:var(--faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  td.sr{color:var(--accent2);white-space:nowrap;font-variant-numeric:tabular-nums}
+  td.sr small{color:var(--faint);display:block}
+  td.map{min-width:180px;word-break:break-word}
+  td.map .diff{color:var(--dim)}
+  td.why{color:var(--dim);min-width:160px;word-break:break-word}
+  td.get{white-space:nowrap;font-size:12px}
+  td.get a{margin-right:6px}
+  .badge{display:inline-block;font-size:10px;padding:1px 6px;border-radius:10px;margin-left:4px;vertical-align:1px;
+         border:1px solid var(--line2);color:var(--faint)}
+  .badge.new{border-color:#2f5d3a;color:var(--ok)}
+  .empty{color:var(--faint);font-size:12px;padding:6px 0}
+  .shareline{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .shareline input{flex:1;min-width:180px}
+  code.cmd{display:block;background:#110d0f;border:1px solid var(--line);border-radius:7px;padding:8px 10px;
+           font:12px Consolas,monospace;color:#e8dce2;word-break:break-all;margin:4px 0 10px;cursor:pointer}
+  code.cmd:hover{border-color:var(--accent)}
+
+  .col{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--line)}
+  .col:last-child{border:none}
+  .col .nm{word-break:break-word}
+  .col .nm span{color:var(--faint);font-size:12px}
+  .col button{background:none;border:none;color:var(--faint);cursor:pointer;font-size:15px;padding:2px 6px;border-radius:6px}
+  .col button:hover{color:var(--accent);background:var(--panel2)}
+
+  .modal{position:fixed;inset:0;background:#000a;display:none;align-items:flex-start;justify-content:center;
+         z-index:50;padding:40px 16px;overflow:auto}
+  .modal.open{display:flex}
+  .modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:12px;width:100%;max-width:640px;padding:18px}
+  .modal h3{margin:0 0 6px;font-size:16px}
+  .modal p{color:var(--dim);margin:6px 0 12px;font-size:13px}
+  .env{list-style:none;padding:0;margin:8px 0 0;font-size:12.5px}
+  .env li{padding:4px 0;display:flex;gap:8px}
+  .env .ok{color:var(--ok)} .env .bad{color:var(--err)} .env .warn{color:var(--warn)}
+  .muted{color:var(--faint);font-size:12px}
+  .path{font-family:Consolas,monospace;font-size:11.5px;color:var(--dim);word-break:break-all}
+
+  footer{color:var(--faint);font-size:11.5px;text-align:center;padding:10px 16px 18px}
+
+  #tooltip{position:fixed;z-index:100;max-width:320px;background:#0e0b0d;color:var(--text);border:1px solid var(--line2);
+           border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.45;pointer-events:none;opacity:0;
+           transition:opacity .12s;box-shadow:0 8px 24px #000a}
+  #tooltip.show{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <h1>osu!<b>trainer</b><small id="version"></small></h1>
+  <div class="info" id="info">…</div>
+  <div class="hbtns">
+    <div class="seg" id="langseg"><button data-lang="ru">RU</button><button data-lang="en">EN</button></div>
+    <button class="iconbtn" id="btn-settings" onclick="openSettings()" data-i18n="settings" hidden></button>
+  </div>
+</header>
+
+<div class="banner" id="banner" hidden><span id="bannertext"></span>
+  <button class="iconbtn" id="bannerbtn" onclick="openSettings()" data-i18n="open_settings"></button></div>
+
+<!-- подборка с сайта, пришедшая в локальную версию -->
+<div class="banner info" id="importbox" hidden>
+  <span id="importtext"></span>
+  <button class="btn go small" onclick="doImport()" data-i18n="import_ok"></button>
+  <button class="btn small" onclick="cancelImport()" data-i18n="import_cancel"></button>
+</div>
+
+<main>
+  <div>
+    <div class="card">
+      <div class="tabs">
+        <button id="tab-skill" class="on" onclick="setMode('skill')" data-i18n="tab_skill"></button>
+        <button id="tab-tour" onclick="setMode('tour')" data-i18n="tab_tour"></button>
+      </div>
+
+      <!-- НАВЫКИ -->
+      <section id="pane-skill">
+        <div class="lbl"><span data-i18n="skills"></span><span class="help" tabindex="0" data-tip-key="tip_skills">?</span></div>
+        <div class="chips" id="skills"></div>
+
+        <div class="lbl"><span data-i18n="like"></span><span class="help" tabindex="0" data-tip-key="tip_like">?</span></div>
+        <textarea id="like" data-i18n-ph="like_ph"></textarea>
+
+        <div class="row wrap">
+          <div><div class="lbl"><span data-i18n="like_weight"></span><span class="help" tabindex="0" data-tip-key="tip_like_weight">?</span></div>
+            <input type="number" id="like_weight" value="0.7" step="0.05" min="0" max="1"></div>
+          <div><div class="lbl"><span data-i18n="min_pc"></span><span class="help" tabindex="0" data-tip-key="tip_min_pc">?</span></div>
+            <input type="number" id="min_pc" value="0" step="10000" min="0"></div>
+          <div><div class="lbl"><span data-i18n="pop_weight"></span><span class="help" tabindex="0" data-tip-key="tip_pop_weight">?</span></div>
+            <input type="number" id="pop_weight" value="0" step="2" min="0" max="30"></div>
+        </div>
+
+        <div class="lbl"><span data-i18n="stream_bpm"></span><span class="help" tabindex="0" data-tip-key="tip_stream_bpm">?</span><span class="val" id="v_stream"></span></div>
+        <div class="range" id="r_stream" data-min="100" data-max="320" data-step="5" data-lo="100" data-hi="320" data-kind="bpm"></div>
+
+        <div class="lbl"><span data-i18n="status"></span><span class="help" tabindex="0" data-tip-key="tip_status">?</span></div>
+        <div class="chips" id="status"></div>
+
+        <details>
+          <summary data-i18n="advanced"></summary>
+          <div class="row wrap">
+            <div><div class="lbl"><span data-i18n="pool"></span><span class="help" tabindex="0" data-tip-key="tip_pool">?</span></div>
+              <input type="number" id="pool" value="260" step="20" min="20"></div>
+            <div><div class="lbl"><span data-i18n="depth"></span><span class="help" tabindex="0" data-tip-key="tip_depth">?</span></div>
+              <input type="number" id="depth" value="150" step="50" min="50"></div>
+            <div><div class="lbl"><span data-i18n="per_set"></span><span class="help" tabindex="0" data-tip-key="tip_per_set">?</span></div>
+              <input type="number" id="per_set" value="1" min="1" max="4"></div>
+          </div>
+          <div class="row wrap">
+            <div><div class="lbl"><span data-i18n="min_score"></span><span class="help" tabindex="0" data-tip-key="tip_min_score">?</span></div>
+              <input type="number" id="min_score" data-i18n-ph="auto" min="0" max="100"></div>
+            <div><div class="lbl"><span data-i18n="threads"></span><span class="help" tabindex="0" data-tip-key="tip_threads">?</span></div>
+              <input type="number" id="threads" value="4" min="1" max="8"></div>
+          </div>
+          <div class="flags localonly">
+            <label class="flag"><input type="checkbox" id="local_only"><span data-i18n="local_only"></span><span class="help" tabindex="0" data-tip-key="tip_local_only">?</span></label>
+            <label class="flag"><input type="checkbox" id="skip_owned"><span data-i18n="skip_owned"></span><span class="help" tabindex="0" data-tip-key="tip_skip_owned">?</span></label>
+          </div>
+        </details>
+      </section>
+
+      <!-- ТУРНИРЫ -->
+      <section id="pane-tour" hidden>
+        <div class="lbl"><span data-i18n="slots"></span><span class="help" tabindex="0" data-tip-key="tip_slots">?</span></div>
+        <div class="slotgrid" id="slots"></div>
+        <div class="empty" id="nopool" hidden></div>
+
+        <div class="lbl"><span data-i18n="digits"></span><span class="help" tabindex="0" data-tip-key="tip_digits">?</span></div>
+        <div class="chips" id="digits"></div>
+
+        <div class="lbl"><span data-i18n="tiers"></span><span class="help" tabindex="0" data-tip-key="tip_tiers">?</span></div>
+        <div class="chips" id="tiers"></div>
+
+        <div class="lbl"><span data-i18n="years"></span><span class="help" tabindex="0" data-tip-key="tip_years">?</span><span class="val" id="v_years"></span></div>
+        <div class="range" id="r_years" data-min="2008" data-max="2026" data-step="1" data-lo="2008" data-hi="2026" data-kind="year"></div>
+
+        <div class="row wrap">
+          <div><div class="lbl"><span data-i18n="per_tournament"></span><span class="help" tabindex="0" data-tip-key="tip_per_tournament">?</span></div>
+            <input type="number" id="per_tournament" value="3" min="1" max="30"></div>
+          <div><div class="lbl"><span data-i18n="max_lookups"></span><span class="help" tabindex="0" data-tip-key="tip_max_lookups">?</span></div>
+            <input type="number" id="max_lookups" value="600" step="100" min="50"></div>
+        </div>
+
+        <div class="lbl"><span data-i18n="tours"></span><span class="help" tabindex="0" data-tip-key="tip_tours">?</span></div>
+        <div class="picker">
+          <input type="text" id="tourinput" autocomplete="off" data-i18n-ph="tours_ph">
+          <div class="suggest" id="suggest"></div>
+        </div>
+        <div class="picked" id="tourpicked"></div>
+
+        <div class="lbl"><span data-i18n="sources"></span><span class="help" tabindex="0" data-tip-key="tip_sources">?</span></div>
+        <div class="chips" id="sources"></div>
+      </section>
+
+      <!-- КАРТА И МУЗЫКА (для обеих вкладок) -->
+      <div class="block">
+        <h3 data-i18n="map_music"></h3>
+        <div class="lbl"><span data-i18n="stars"></span><span class="help" tabindex="0" data-tip-key="tip_stars">?</span><span class="val" id="v_stars"></span></div>
+        <div class="range" id="r_stars" data-min="0" data-max="12" data-step="0.1" data-lo="5" data-hi="6" data-kind="stars"></div>
+
+        <div class="lbl"><span data-i18n="bpm"></span><span class="help" tabindex="0" data-tip-key="tip_bpm">?</span><span class="val" id="v_bpm"></span></div>
+        <div class="range" id="r_bpm" data-min="60" data-max="360" data-step="5" data-lo="60" data-hi="360" data-kind="bpm"></div>
+
+        <div class="lbl"><span data-i18n="length"></span><span class="help" tabindex="0" data-tip-key="tip_length">?</span><span class="val" id="v_length"></span></div>
+        <div class="range" id="r_length" data-min="0" data-max="600" data-step="10" data-lo="0" data-hi="600" data-kind="time"></div>
+
+        <div class="lbl"><span data-i18n="genres"></span><span class="help" tabindex="0" data-tip-key="tip_genres">?</span></div>
+        <div class="chips" id="genres"></div>
+
+        <div class="lbl"><span data-i18n="words"></span><span class="help" tabindex="0" data-tip-key="tip_words">?</span></div>
+        <input type="text" id="words" data-i18n-ph="words_ph">
+      </div>
+
+      <!-- КОЛЛЕКЦИЯ -->
+      <div class="block">
+        <h3 data-i18n="collection"></h3>
+        <div class="row">
+          <div style="flex:1"><div class="lbl"><span data-i18n="count"></span><span class="help" tabindex="0" data-tip-key="tip_count">?</span></div>
+            <input type="number" id="count" value="30" min="1" max="300"></div>
+          <div style="flex:3"><div class="lbl"><span data-i18n="name"></span><span class="help" tabindex="0" data-tip-key="tip_name">?</span></div>
+            <input type="text" id="name" data-i18n-ph="auto"></div>
+          <div style="flex:1" class="localonly"><div class="lbl"><span data-i18n="split"></span><span class="help" tabindex="0" data-tip-key="tip_split">?</span></div>
+            <input type="number" id="split" data-i18n-ph="split_ph" step="0.1" min="0.1"></div>
+        </div>
+        <div class="flags localonly">
+          <label class="flag"><input type="checkbox" id="no_download"><span data-i18n="no_download"></span><span class="help" tabindex="0" data-tip-key="tip_no_download">?</span></label>
+          <label class="flag"><input type="checkbox" id="no_collection"><span data-i18n="no_collection"></span><span class="help" tabindex="0" data-tip-key="tip_no_collection">?</span></label>
+        </div>
+        <div class="actions">
+          <button class="btn go" id="btn-run" onclick="run(false)"></button>
+          <button class="btn alt localonly" id="btn-dry" onclick="run(true)" data-i18n="btn_dry" data-tip-key="tip_dry"></button>
+          <button class="btn alt" id="btn-stop" onclick="stop()" data-i18n="btn_stop" disabled></button>
+        </div>
+        <div class="state" id="state"></div>
+      </div>
+    </div>
+
+    <div class="card localonly">
+      <h2><span data-i18n="collections"></span><span class="help" tabindex="0" data-tip-key="tip_collections">?</span></h2>
+      <div id="collections"></div>
+    </div>
+  </div>
+
+  <div class="sticky">
+    <div class="card">
+      <h2 data-i18n="log"></h2>
+      <div id="log"></div>
+    </div>
+    <div class="card">
+      <h2><span data-i18n="results"></span><span class="sub" id="rescount"></span></h2>
+      <div class="shareline" id="shareline" hidden>
+        <button class="btn go small" onclick="addToGame()" data-i18n="add_to_game" data-tip-key="tip_add"></button>
+        <input type="text" id="sharelink" readonly>
+        <button class="btn small" onclick="copyText($('sharelink').value, this)" data-i18n="copy_link"></button>
+      </div>
+      <div class="tablewrap"><table id="results"><tbody></tbody></table></div>
+      <div class="empty" id="noresults" data-i18n="no_results"></div>
+    </div>
+  </div>
+</main>
+
+<footer id="footer"></footer>
+
+<!-- настройки (локальная версия) -->
+<div class="modal" id="settings" onclick="if(event.target===this)closeModal('settings')">
+  <div class="box">
+    <h3 data-i18n="settings"></h3>
+    <ul class="env" id="envlist"></ul>
+    <div class="lbl"><span data-i18n="set_osu_data"></span><span class="help" tabindex="0" data-tip-key="tip_osu_data">?</span></div>
+    <input type="text" id="cfg_osu_data" data-i18n-ph="auto_detect">
+    <div class="lbl"><span data-i18n="set_osu_exe"></span><span class="help" tabindex="0" data-tip-key="tip_osu_exe">?</span></div>
+    <input type="text" id="cfg_osu_exe" data-i18n-ph="auto_detect">
+    <div class="lbl"><span data-i18n="set_contact"></span><span class="help" tabindex="0" data-tip-key="tip_contact">?</span></div>
+    <input type="text" id="cfg_contact" data-i18n-ph="contact_ph">
+    <div class="lbl"><span data-i18n="set_project"></span><span class="help" tabindex="0" data-tip-key="tip_project">?</span></div>
+    <input type="text" id="cfg_project_url" placeholder="https://github.com/...">
+    <div class="actions">
+      <button class="btn go" onclick="saveSettings()" data-i18n="save"></button>
+      <button class="btn alt" onclick="closeModal('settings')" data-i18n="close"></button>
+    </div>
+    <div class="lbl" style="margin-top:20px"><b data-i18n="set_pools"></b><span class="help" tabindex="0" data-tip-key="tip_pools">?</span></div>
+    <div class="muted" id="poolinfo"></div>
+    <div class="actions"><button class="btn alt" id="btn-pools" onclick="refreshPools()" data-i18n="pools_refresh"></button></div>
+  </div>
+</div>
+
+<!-- как установить локальный osu!trainer (сайт) -->
+<div class="modal" id="installbox" onclick="if(event.target===this)closeModal('installbox')">
+  <div class="box">
+    <h3 data-i18n="need_app_title"></h3>
+    <p data-i18n="need_app_text"></p>
+    <div class="muted" data-i18n="install_win"></div>
+    <code class="cmd" id="cmd_win" onclick="copyText(this.textContent)"></code>
+    <div class="muted" data-i18n="install_unix"></div>
+    <code class="cmd" id="cmd_unix" onclick="copyText(this.textContent)"></code>
+    <p><span data-i18n="install_after"></span> <a id="repolink" target="_blank" rel="noopener">GitHub</a></p>
+    <div class="actions">
+      <button class="btn go" onclick="addToGame()" data-i18n="try_again"></button>
+      <button class="btn alt" onclick="openLocal()" data-i18n="open_local"></button>
+      <button class="btn alt" onclick="closeModal('installbox')" data-i18n="close"></button>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip" role="tooltip"></div>
+
+<script>
+/* ============================== тексты ==============================
+   Термины osu! (streams, jumps, tech, finger control, sliders, spacing, SV, BPM)
+   в русской версии остаются по-английски; всё остальное - обычным русским языком. */
+const T = {
+ru: {
+  settings:'Настройки', open_settings:'Открыть настройки', tab_skill:'Навыки', tab_tour:'Турнирные пулы',
+  skills:'Навыки', like:'Карты-образцы — «хочу похожее»',
+  like_ph:'ссылки на карты или номера сложностей, например\nhttps://osu.ppy.sh/beatmapsets/1231048#osu/2591748',
+  like_weight:'Вес похожести', min_pc:'Мин. число игр', pop_weight:'Бонус за популярность',
+  stream_bpm:'BPM streams', status:'Статус карт', advanced:'Дополнительно',
+  pool:'Кандидатов проверить', depth:'Глубина поиска', per_set:'Сложностей с песни', min_score:'Порог соответствия',
+  threads:'Потоков', local_only:'только мои карты', skip_owned:'только новые карты', auto:'авто',
+  slots:'Слоты пула', digits:'Рейтинг участников', tiers:'Уровень турнира (Liquipedia)', years:'Годы турниров',
+  per_tournament:'Карт с одного турнира', max_lookups:'Проверять карт', tours:'Турниры',
+  tours_ph:'начни вводить: OWC, 5 Digit, CWC…', sources:'Источники',
+  map_music:'Карта и музыка', stars:'Звёзды', bpm:'BPM', length:'Длина', genres:'Жанр',
+  words:'Слова в тегах и названии', words_ph:'например: touhou, vocaloid, speedcore',
+  collection:'Коллекция', count:'Карт', name:'Имя коллекции', split:'Разбить по ★', split_ph:'нет',
+  no_download:'не скачивать карты', no_collection:'не создавать коллекцию',
+  btn_run:'Собрать коллекцию', btn_run_server:'Подобрать карты', btn_dry:'Только показать', btn_stop:'Остановить',
+  collections:'Коллекции в игре', log:'Ход работы', results:'Результат', no_results:'Здесь появится подборка.',
+  th_map:'Карта', th_why:'Почему', th_get:'Скачать', any_bpm:'любой', any_year:'все годы', any_len:'любая', from:'от', to:'до',
+  set_osu_data:'Папка данных osu!lazer', set_osu_exe:'Файл запуска osu!lazer', set_contact:'Контакт для Liquipedia',
+  contact_ph:'почта или Discord', set_project:'Страница проекта', save:'Сохранить', close:'Закрыть',
+  set_pools:'Турнирная база', pools_refresh:'Обновить базу', auto_detect:'найти автоматически',
+  pools_info:'{m}, турнирных изданий: {e} · обновлено {d}',
+  pools_empty:'База ещё не собрана — нажми «Обновить базу» (2–3 минуты).',
+  info:'Коллекций: {c} · в турнирной базе {m}', info_site:'В турнирной базе {m}, турнирных изданий: {e}',
+  info_nopool:'Коллекций: {c} · турнирная база не собрана',
+  need_slot:'Выбери хотя бы один слот (NM2, HD1 …)', need_skill:'Выбери навык или добавь карты-образцы',
+  confirm_delete:'Удалить коллекцию «{n}»? Карты останутся в игре, базу сначала скопирую в резерв.',
+  working:'работаю…', queued:'в очереди…', done:'готово', cancelled:'остановлено', owned:'есть', new_:'новая',
+  too_many:'Слишком много запросов — подожди немного и попробуй снова.',
+  res_count:' · {m}', res_dl:', скачано наборов: {n}', no_collections:'Коллекций пока нет.',
+  unknown:'не указан',
+  env_data_ok:'База osu!lazer найдена', env_data_bad:'Папка osu!lazer не найдена — укажи её ниже',
+  env_fmt_ok:'Формат базы совместим ({f})', env_fmt_bad:'Формат базы {f} не поддерживается (нужен {x}) — запись коллекций отключена, обнови osu!trainer',
+  env_exe_ok:'Игра найдена', env_exe_bad:'Файл запуска игры не найден — карты будут открываться системой',
+  env_node_ok:'Node.js найден', env_node_bad:'Node.js не найден — переустанови osu!trainer одной командой из README',
+  env_mod_ok:'Зависимости установлены', env_mod_bad:'Не установлены зависимости — запусти setup',
+  banner_data:'osu!lazer не найден на этом компьютере. Укажи папку данных в настройках.',
+  banner_node:'Не хватает Node.js или зависимостей — запусти setup (см. README).',
+  banner_fmt:'Эта версия osu!lazer использует новый формат базы — коллекции записывать нельзя, пока не обновишь osu!trainer.',
+  banner_site:'Это онлайн-версия: подбор работает здесь, а в игру коллекцию кладёт osu!trainer на компьютере — кнопка «Добавить в игру».',
+  pools_building:'обновляю турнирную базу… (Liquipedia отдаёт данные медленно — такие у неё правила)',
+  add_to_game:'Добавить в игру', copy_link:'Скопировать ссылку', copied:'Скопировано',
+  need_app_title:'Нужен osu!trainer на компьютере',
+  need_app_text:'Сайт не может сам записать коллекцию в игру — это делает osu!trainer на твоём компьютере. Установи его одной командой, запусти и нажми «Добавить в игру» ещё раз. Или просто скачай карты по ссылкам в таблице.',
+  install_win:'Windows — в PowerShell:', install_unix:'macOS / Linux — в терминале:', install_after:'Исходный код и инструкция:',
+  try_again:'Попробовать снова',
+  import_text:'Сайт {site} предлагает подборку «{name}» — {m}. Недостающие карты скачаются, коллекция появится в игре.',
+  open_local:'Уже установлен — открыть',
+  import_ok:'Добавить в игру', import_cancel:'Не надо', import_bad:'Не удалось загрузить подборку: {e}',
+  footer:'Турнирные пулы: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) и <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Карты: osu.ppy.sh, osu.direct, catboy.best. Проект не связан с ppy Pty Ltd.',
+
+  tip_skills:'Какой навык тренировать. Можно выбрать несколько — карта оценивается по лучшему из них. Наведи на навык, чтобы увидеть, что именно он измеряет.',
+  tip_like:'Вставь ссылки на карты, которые нравятся (или номера сложностей). Их ритм, плотность, spacing и sliders разбираются, и находятся похожие карты. Можно без выбора навыков.',
+  tip_like_weight:'Насколько сильно учитывать похожесть на карты-образцы, от 0 до 1. 0.7 — это 70% похожесть и 30% выбранный навык.',
+  tip_min_pc:'Отсекает малоизвестные карты: минимальное число игр у сложности. От 80 000 — популярные карты.',
+  tip_pop_weight:'Добавляет до N баллов популярным картам, чтобы при равном соответствии выше шли известные. 10–15 — заметная прибавка, 0 — выключено.',
+  tip_stream_bpm:'BPM, на котором идут именно streams (цепочки нот на 1/4). Полезно для Streams и Speed. Ползунки на краях — любой.',
+  tip_status:'ranked — рейтинговые карты, loved — любимые игроками (часто необычнее и сложнее), approved и qualified — редкие статусы.',
+  tip_pool:'Сколько карт-кандидатов скачать и разобрать. Больше — точнее подборка, но дольше: около 80 карт в минуту.',
+  tip_depth:'Насколько глубоко листать результаты поиска по каждому запросу.',
+  tip_per_set:'Сколько сложностей одной песни может попасть в коллекцию. 1 — больше разных песен.',
+  tip_min_score:'Минимальная оценка соответствия навыку, от 0 до 100. Пусто — значение по умолчанию для навыка.',
+  tip_threads:'Сколько карт проверять параллельно. Больше 4 не нужно — зеркала ограничивают частоту запросов.',
+  tip_local_only:'Ничего не скачивать: собрать коллекцию только из уже установленных карт.',
+  tip_skip_owned:'Исключить карты, которые уже есть в игре.',
+  tip_slots:'Слот — это мод и номер карты в пуле раунда: NM2 — вторая карта без модов, HD1 — первая с Hidden, TB — tiebreaker. Номер примерно отражает сложность внутри мода. Клик по названию мода слева выбирает весь ряд. Число на кнопке — сколько таких карт в базе.',
+  tip_digits:'Ограничение по рангу игроков турнира: 5-digit — ранги с 10 000 по 99 999, 6-digit — от 100 000, open — без ограничений. «Не указан» — ограничение на странице турнира не нашлось (обычно это open). Ничего не выбрано — все турниры.',
+  tip_tiers:'Уровень турнира по Liquipedia: S — крупнейшие (OWC и подобные), дальше A, B, C, D. «?» — турнира нет на Liquipedia. Ничего не выбрано — все.',
+  tip_years:'Годы проведения турниров. Ползунки на краях — все годы.',
+  tip_per_tournament:'Сколько карт максимум брать из одного турнира, чтобы подборка была из разных турниров.',
+  tip_max_lookups:'Сколько карт пула проверить: звёзды каждой карты запрашиваются у зеркала (около 90 в минуту, потом запоминаются). Если нашлось мало — увеличь.',
+  tip_tours:'Только эти турниры. Ищется по части названия: «5 Digit» найдёт все 5 Digit турниры. Пусто — все.',
+  tip_sources:'Откуда брать пулы: официальная osu!wiki и Liquipedia. Одинаковые карты из обоих источников уже склеены. Ничего не выбрано — оба.',
+  tip_stars:'Звёзды сложности без модов. У слотов DT и HR с модом карта будет сложнее. Правый ползунок в конце — без верхней границы.',
+  tip_bpm:'BPM карты. Ползунки на краях — любой.',
+  tip_length:'Длина карты. Ползунки на краях — любая.',
+  tip_genres:'Жанр музыки, как он указан на сайте osu!. Ничего не выбрано — любой. Жанр выбирают сами авторы карт, поэтому бывает «не указан».',
+  tip_words:'Точнее, чем жанр: карта подходит, если хотя бы одно из слов есть в её тегах, названии, исполнителе или источнике. Например: touhou, vocaloid, speedcore, metal.',
+  tip_count:'Сколько карт положить в коллекцию.',
+  tip_name:'Имя коллекции в игре. Если такая уже есть — карты допишутся в неё без повторов.',
+  tip_split:'Разбить результат на несколько коллекций по звёздам с этим шагом: 0.5 → «… 5.0-5.5», «… 5.5-6.0».',
+  tip_no_download:'Не скачивать недостающие карты. В коллекцию они всё равно попадут и появятся, когда ты их поставишь.',
+  tip_no_collection:'Только скачать карты, коллекции не трогать.',
+  tip_run:'Подобрать карты, скачать недостающие, отправить их в osu! и создать коллекцию. Перед записью база копируется в резерв.',
+  tip_run_server:'Подобрать карты по фильтрам. Потом их можно скачать по ссылкам или добавить в игру через osu!trainer на компьютере.',
+  tip_dry:'Только подобрать и показать список — ничего не скачивается и не меняется.',
+  tip_collections:'Коллекции из твоей игры. Удаление убирает только коллекцию, карты остаются.',
+  tip_osu_data:'Папка данных osu!lazer, в ней лежит client.realm. Обычно находится сама; укажи вручную, если переносил данные игры.',
+  tip_osu_exe:'Файл запуска osu!lazer — через него скачанные карты передаются в игру.',
+  tip_contact:'Необязательно. Liquipedia просит указывать в запросах к ней контакт (почту или Discord), чтобы написать при проблемах.',
+  tip_project:'Необязательно. Ссылка на страницу проекта (например, на GitHub) — тоже уходит в запросы к Liquipedia.',
+  tip_pools:'Своя база турнирных пулов из osu!wiki и Liquipedia. Обновляй раз в пару недель, чтобы подтянуть новые турниры.',
+  tip_add:'Кладёт подборку в игру через osu!trainer на твоём компьютере. Если его нет — покажем, как поставить одной командой.'
+},
+en: {
+  settings:'Settings', open_settings:'Open settings', tab_skill:'Skills', tab_tour:'Tournament pools',
+  skills:'Skills', like:'Reference maps — "more like these"',
+  like_ph:'map links or difficulty ids, e.g.\nhttps://osu.ppy.sh/beatmapsets/1231048#osu/2591748',
+  like_weight:'Similarity weight', min_pc:'Min. playcount', pop_weight:'Popularity bonus',
+  stream_bpm:'Stream BPM', status:'Map status', advanced:'Advanced',
+  pool:'Candidates to check', depth:'Search depth', per_set:'Diffs per song', min_score:'Match threshold',
+  threads:'Threads', local_only:'installed maps only', skip_owned:'new maps only', auto:'auto',
+  slots:'Pool slots', digits:'Player rank range', tiers:'Tournament tier (Liquipedia)', years:'Tournament years',
+  per_tournament:'Maps per tournament', max_lookups:'Maps to check', tours:'Tournaments',
+  tours_ph:'start typing: OWC, 5 Digit, CWC…', sources:'Sources',
+  map_music:'Map and music', stars:'Stars', bpm:'BPM', length:'Length', genres:'Genre',
+  words:'Words in tags and title', words_ph:'e.g. touhou, vocaloid, speedcore',
+  collection:'Collection', count:'Maps', name:'Collection name', split:'Split by ★', split_ph:'no',
+  no_download:"don't download maps", no_collection:"don't create a collection",
+  btn_run:'Build collection', btn_run_server:'Find maps', btn_dry:'Preview only', btn_stop:'Stop',
+  collections:'Collections in game', log:'Progress', results:'Results', no_results:'Your selection will appear here.',
+  th_map:'Map', th_why:'Why', th_get:'Download', any_bpm:'any', any_year:'all years', any_len:'any', from:'from', to:'to',
+  set_osu_data:'osu!lazer data folder', set_osu_exe:'osu!lazer executable', set_contact:'Contact for Liquipedia',
+  contact_ph:'email or Discord', set_project:'Project page', save:'Save', close:'Close',
+  set_pools:'Tournament database', pools_refresh:'Update database', auto_detect:'detect automatically',
+  pools_info:'{m}, tournament editions: {e} · updated {d}',
+  pools_empty:'The database is not built yet — press "Update database" (2–3 minutes).',
+  info:'Collections: {c} · tournament database: {m}', info_site:'Tournament database: {m}, tournament editions: {e}',
+  info_nopool:'{c} collections · tournament database not built',
+  need_slot:'Pick at least one slot (NM2, HD1 …)', need_skill:'Pick a skill or add reference maps',
+  confirm_delete:'Delete collection "{n}"? Maps stay in the game, the database is backed up first.',
+  working:'working…', queued:'queued…', done:'done', cancelled:'stopped', owned:'owned', new_:'new',
+  too_many:'Too many requests — wait a bit and try again.',
+  res_count:' · {m}', res_dl:', sets downloaded: {n}', no_collections:'No collections yet.',
+  unknown:'unspecified',
+  env_data_ok:'osu!lazer database found', env_data_bad:'osu!lazer data folder not found — set it below',
+  env_fmt_ok:'Database format is compatible ({f})', env_fmt_bad:'Database format {f} is not supported (needs {x}) — writing collections is disabled, update osu!trainer',
+  env_exe_ok:'Game found', env_exe_bad:'Game executable not found — maps will be opened by the system',
+  env_node_ok:'Node.js found', env_node_bad:'Node.js not found — reinstall osu!trainer with the one-line command from the README',
+  env_mod_ok:'Dependencies installed', env_mod_bad:'Dependencies are missing — run setup',
+  banner_data:'osu!lazer was not found on this computer. Set the data folder in settings.',
+  banner_node:'Node.js or dependencies are missing — run setup (see README).',
+  banner_fmt:'This osu!lazer version uses a newer database format — collections cannot be written until osu!trainer is updated.',
+  banner_site:'This is the online version: maps are selected here, and osu!trainer on your computer puts the collection into the game — use "Add to game".',
+  pools_building:'updating the tournament database… (Liquipedia serves data slowly per its API terms)',
+  add_to_game:'Add to game', copy_link:'Copy link', copied:'Copied',
+  need_app_title:'osu!trainer is needed on your computer',
+  need_app_text:"The website can't write a collection into your game — osu!trainer on your computer does that. Install it with one command, start it and press \"Add to game\" again. Or just download the maps from the links in the table.",
+  install_win:'Windows — in PowerShell:', install_unix:'macOS / Linux — in a terminal:', install_after:'Source code and instructions:',
+  try_again:'Try again',
+  import_text:'{site} offers the selection "{name}" — {m}. Missing maps will be downloaded and the collection will appear in the game.',
+  open_local:'Already installed — open',
+  import_ok:'Add to game', import_cancel:'No thanks', import_bad:'Could not load the selection: {e}',
+  footer:'Tournament pools: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) and <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Maps: osu.ppy.sh, osu.direct, catboy.best. Not affiliated with ppy Pty Ltd.',
+
+  tip_skills:'Which skill to train. You can pick several — a map is scored by the best of them. Hover a skill to see what it measures.',
+  tip_like:'Paste links to maps you like (or difficulty ids). Their rhythm, density, spacing and sliders are analysed and similar maps are found. Works without picking skills.',
+  tip_like_weight:'How much similarity to the reference maps matters, from 0 to 1. 0.7 = 70% similarity + 30% selected skill.',
+  tip_min_pc:'Filters out obscure maps: minimum plays of the difficulty. 80,000+ means popular maps.',
+  tip_pop_weight:'Adds up to N points to popular maps so well-known maps rank higher on ties. 10–15 is a noticeable bonus, 0 is off.',
+  tip_stream_bpm:'BPM of the actual 1/4 streams. Useful for Streams and Speed. Handles at the ends — any.',
+  tip_status:'ranked — ranked maps, loved — community favourites (often harder and more unusual), approved and qualified — rare statuses.',
+  tip_pool:'How many candidate maps to download and analyse. More means a better selection but slower: about 80 maps per minute.',
+  tip_depth:'How deep to page through search results for each query.',
+  tip_per_set:'How many difficulties of one song may end up in the collection. 1 gives more different songs.',
+  tip_min_score:'Minimum skill match score, 0–100. Empty — the default for the skill.',
+  tip_threads:'How many maps to check in parallel. No need for more than 4 — mirrors rate-limit requests.',
+  tip_local_only:'Download nothing: build the collection from maps you already have installed.',
+  tip_skip_owned:'Exclude maps that are already installed.',
+  tip_slots:'A slot is the mod plus the position of the map in a round pool: NM2 is the second No Mod map, HD1 the first Hidden, TB the tiebreaker. The number roughly reflects difficulty within the mod. Click a mod name on the left to select the whole row. The number on a button is how many such maps are in the database.',
+  tip_digits:'Player rank restriction of the tournament: 5-digit = ranks 10,000–99,999, 6-digit = 100,000 and below, open = no restriction. "Unspecified" — no restriction found on the tournament page (usually open). Nothing selected — all tournaments.',
+  tip_tiers:'Tournament tier on Liquipedia: S is the biggest (OWC etc.), then A, B, C, D. "?" — the tournament is not on Liquipedia. Nothing selected — all.',
+  tip_years:'Years the tournaments took place. Handles at the ends — all years.',
+  tip_per_tournament:'Maximum maps from a single tournament, so the selection comes from different tournaments.',
+  tip_max_lookups:'How many pool maps to check: star rating of each map is requested from a mirror (about 90 per minute, remembered afterwards). Increase if too few were found.',
+  tip_tours:'Only these tournaments. Matches part of the name: "5 Digit" finds all 5 Digit tournaments. Empty — all.',
+  tip_sources:'Where pools come from: the official osu!wiki and Liquipedia. Duplicate maps from both are already merged. Nothing selected — both.',
+  tip_stars:'Star rating of the difficulty without mods. DT and HR slots are harder with the mod applied. The right handle at the end means no upper limit.',
+  tip_bpm:'Map BPM. Handles at the ends — any.',
+  tip_length:'Map length. Handles at the ends — any.',
+  tip_genres:'Music genre as set on the osu! website. Nothing selected — any. Mappers set the genre themselves, so it can be "unspecified".',
+  tip_words:'More precise than genre: a map matches if any of the words appears in its tags, title, artist or source. E.g. touhou, vocaloid, speedcore, metal.',
+  tip_count:'How many maps to put into the collection.',
+  tip_name:'Collection name in game. If it already exists, maps are added to it without duplicates.',
+  tip_split:'Split the result into several collections by stars with this step: 0.5 → "… 5.0-5.5", "… 5.5-6.0".',
+  tip_no_download:"Don't download missing maps. They still go into the collection and show up once installed.",
+  tip_no_collection:'Only download maps, leave collections untouched.',
+  tip_run:'Select maps, download missing ones, send them to osu! and create the collection. The database is backed up before writing.',
+  tip_run_server:'Select maps by the filters. Then download them from the links or add them to the game with osu!trainer on your computer.',
+  tip_dry:'Only select and show the list — nothing is downloaded or changed.',
+  tip_collections:'Collections from your game. Deleting removes only the collection, maps stay.',
+  tip_osu_data:'osu!lazer data folder containing client.realm. Usually detected automatically; set it if you moved the game data.',
+  tip_osu_exe:'osu!lazer executable — downloaded maps are passed to the game through it.',
+  tip_contact:'Optional. Liquipedia asks API users to include contact info (email or Discord) so they can reach out about problems.',
+  tip_project:'Optional. A link to the project page (e.g. GitHub) — also sent in requests to Liquipedia.',
+  tip_pools:'Own database of tournament pools from osu!wiki and Liquipedia. Update every couple of weeks to pick up new tournaments.',
+  tip_add:'Puts the selection into your game through osu!trainer on your computer. If it is not installed, you will see how to install it with one command.'
+}};
+
+/* ============================== состояние ============================== */
+let LANG = 'ru', MODE = 'skill', DATA = null, JOB = null, SEEN = 0, TIMER = null, LASTRESULT = null, SITE = false;
+let IMPORT = null;
+const LOCAL_APP = 'http://127.0.0.1:8730';
+const picked = { skills:new Set(['fingercontrol']), status:new Set(['ranked']), slots:new Set(), digits:new Set(),
+                 tiers:new Set(), sources:new Set(), genres:new Set(), tours:[] };
+const $ = id => document.getElementById(id);
+const t = (k, vars) => { let s = (T[LANG] && T[LANG][k]) || T.ru[k] || k;
+  if (vars) for (const [a, b] of Object.entries(vars)) s = s.split('{' + a + '}').join(b); return s; };
+/* «1 карта, 2 карты, 5 карт» */
+function mapsText(n){
+  n = +n; const s = n.toLocaleString(LANG === 'en' ? 'en' : 'ru');
+  if (LANG === 'en') return s + (n === 1 ? ' map' : ' maps');
+  const d = n % 10, h = n % 100;
+  return s + (d === 1 && h !== 11 ? ' карта' : d >= 2 && d <= 4 && (h < 12 || h > 14) ? ' карты' : ' карт');
+}
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const FIELDS = ['like','like_weight','min_pc','pop_weight','pool','depth','per_set','min_score','threads','local_only',
+  'skip_owned','per_tournament','max_lookups','count','name','split','no_download','no_collection','words'];
+const RANGES = ['r_stars','r_bpm','r_length','r_stream','r_years'];
+
+function store(){ try{ localStorage.setItem('osu-trainer', JSON.stringify({
+  lang:LANG, mode:MODE, sets:Object.fromEntries(Object.entries(picked).map(([k, v]) => [k, v instanceof Set ? [...v] : v])),
+  fields:Object.fromEntries(FIELDS.map(f => [f, $(f).type === 'checkbox' ? $(f).checked : $(f).value])),
+  ranges:Object.fromEntries(RANGES.map(r => [r, rangeGet(r)])) })); }catch(e){} }
+function restore(){ try{ const s = JSON.parse(localStorage.getItem('osu-trainer') || 'null'); if (!s || !s.sets) return;
+  LANG = s.lang || LANG; MODE = s.mode || MODE;
+  for (const [k, v] of Object.entries(s.sets)) if (k in picked) picked[k] = Array.isArray(picked[k]) ? v : new Set(v);
+  for (const [f, v] of Object.entries(s.fields || {})) if ($(f)) { if ($(f).type === 'checkbox') $(f).checked = v; else $(f).value = v; }
+  for (const [r, v] of Object.entries(s.ranges || {})) if ($(r) && v) { $(r).dataset.lo = v[0]; $(r).dataset.hi = v[1]; }
+}catch(e){} }
+
+/* ============================== двусторонние ползунки ============================== */
+function fmtRange(el, lo, hi){
+  const kind = el.dataset.kind, min = +el.dataset.min, max = +el.dataset.max;
+  const f = v => kind === 'time' ? Math.floor(v / 60) + ':' + String(v % 60).padStart(2, '0')
+               : kind === 'stars' ? (+v).toFixed(1) : String(v);
+  if (lo <= min && hi >= max) return kind === 'stars' ? f(lo) + ' – ' + f(hi) + '+' : t({time:'any_len', year:'any_year'}[kind] || 'any_bpm');
+  if (lo <= min) return t('to') + ' ' + f(hi);
+  if (hi >= max) return kind === 'stars' ? f(lo) + '+' : t('from') + ' ' + f(lo);
+  return f(lo) + ' – ' + f(hi) + (kind === 'stars' ? '★' : '');
+}
+function rangeInit(id){
+  const el = $(id);
+  el.innerHTML = '<div class="track"></div><div class="fill"></div><input type="range" class="lo"><input type="range" class="hi">';
+  const [lo, hi] = el.querySelectorAll('input');
+  for (const inp of [lo, hi]) { inp.min = el.dataset.min; inp.max = el.dataset.max; inp.step = el.dataset.step; }
+  lo.value = el.dataset.lo; hi.value = el.dataset.hi;
+  lo.setAttribute('aria-label', id + ' min'); hi.setAttribute('aria-label', id + ' max');
+  const update = (moved) => {
+    let a = +lo.value, b = +hi.value;
+    if (a > b) { if (moved === lo) lo.value = a = b; else hi.value = b = a; }
+    const min = +el.dataset.min, max = +el.dataset.max, fill = el.querySelector('.fill');
+    fill.style.left = ((a - min) / (max - min) * 100) + '%';
+    fill.style.width = ((b - a) / (max - min) * 100) + '%';
+    lo.style.zIndex = a >= max - (max - min) * 0.02 ? 3 : 2;   // левый ползунок у правого края должен оставаться доступным
+    el.dataset.lo = a; el.dataset.hi = b;
+    const val = $('v_' + id.slice(2)); if (val) val.textContent = fmtRange(el, a, b);
+  };
+  lo.addEventListener('input', () => update(lo)); hi.addEventListener('input', () => update(hi));
+  lo.addEventListener('change', store); hi.addEventListener('change', store);
+  update();
+}
+function rangeGet(id){ const el = $(id); return [+el.dataset.lo, +el.dataset.hi]; }
+/* диапазон для запроса: края ползунка = без ограничения с этой стороны; всё открыто = фильтра нет */
+function rangeParam(id, openLo, openHi, always){
+  const el = $(id), [a, b] = rangeGet(id), min = +el.dataset.min, max = +el.dataset.max;
+  if (!always && a <= min && b >= max) return '';
+  return (a <= min ? openLo : a) + '-' + (b >= max ? openHi : b);
+}
+function rangesRefresh(){ RANGES.forEach(id => { const el = $(id), [a, b] = rangeGet(id);
+  const val = $('v_' + id.slice(2)); if (val) val.textContent = fmtRange(el, a, b); }); }
+
+/* ============================== i18n ============================== */
+function applyLang(){
+  document.documentElement.lang = LANG;
+  document.querySelectorAll('[data-i18n]').forEach(el => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll('[data-i18n-ph]').forEach(el => { el.placeholder = t(el.dataset.i18nPh); });
+  document.querySelectorAll('[data-tip-key]').forEach(el => { el.dataset.tip = t(el.dataset.tipKey);
+    if (el.classList.contains('help')) el.setAttribute('aria-label', el.dataset.tip); });
+  document.querySelectorAll('#langseg button').forEach(b => b.classList.toggle('on', b.dataset.lang === LANG));
+  $('btn-run').textContent = t(SITE ? 'btn_run_server' : 'btn_run');
+  $('btn-run').dataset.tip = t(SITE ? 'tip_run_server' : 'tip_run');
+  $('footer').innerHTML = t('footer');
+  rangesRefresh();
+  if (DATA) render();
+  if (IMPORT && IMPORT.preview) showImport();
+}
+
+/* ============================== подсказки ============================== */
+const tipEl = $('tooltip');
+let tipFor = null;
+function showTip(el){
+  const text = el.dataset.tip; if (!text) return;
+  tipFor = el; tipEl.textContent = text; tipEl.classList.add('show');
+  const r = el.getBoundingClientRect(), w = tipEl.offsetWidth, h = tipEl.offsetHeight, m = 8;
+  let x = r.left + r.width / 2 - w / 2, y = r.bottom + 8;
+  if (y + h > innerHeight - m) y = r.top - h - 8;
+  x = Math.max(m, Math.min(x, innerWidth - w - m)); y = Math.max(m, y);
+  tipEl.style.left = x + 'px'; tipEl.style.top = y + 'px';
+}
+function hideTip(){ tipFor = null; tipEl.classList.remove('show'); }
+document.addEventListener('mouseover', e => { const el = e.target.closest('[data-tip]');
+  if (el) { if (el !== tipFor) showTip(el); } else if (tipFor) hideTip(); });
+document.addEventListener('mouseout', e => { const el = e.target.closest('[data-tip]');
+  if (el && !el.contains(e.relatedTarget)) hideTip(); });
+document.addEventListener('focusin', e => { const el = e.target.closest('[data-tip]'); if (el) showTip(el); });
+document.addEventListener('focusout', hideTip);
+document.addEventListener('click', e => { const el = e.target.closest('.help');
+  if (el) { e.preventDefault(); tipFor === el ? hideTip() : showTip(el); } });
+addEventListener('scroll', hideTip, true);
+
+/* ============================== сеть ============================== */
+async function api(path, body){
+  const opt = body === undefined ? {} : { method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'osu-trainer'},
+                                          body:JSON.stringify(body) };
+  const r = await fetch(path, opt);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) { const e = new Error(d.error || r.status); e.status = r.status; throw e; }
+  return d;
+}
+
+/* ============================== отрисовка ============================== */
+function chip(label, opts){
+  const d = document.createElement('div');
+  d.className = 'chip' + (opts.on ? ' on' : '');
+  d.setAttribute('role', 'button'); d.tabIndex = 0;
+  d.innerHTML = esc(label) + (opts.sub != null ? '<small>' + esc(opts.sub) + '</small>' : '');
+  if (opts.tip) d.dataset.tip = opts.tip;
+  const act = () => { opts.click(d); store(); };
+  d.onclick = act; d.onkeydown = e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); act(); } };
+  return d;
+}
+function toggler(set, key){ return el => { set.has(key) ? set.delete(key) : set.add(key); el.classList.toggle('on', set.has(key)); }; }
+function chips(box, items, set){
+  box.innerHTML = '';
+  items.forEach(it => box.appendChild(chip(it.label, { on:set.has(it.key), sub:it.sub, tip:it.tip, click:toggler(set, it.key) })));
+}
+
+function render(){
+  const d = DATA, pool = d.pool;
+  $('version').textContent = 'v' + d.version;
+  $('info').textContent = SITE ? (pool ? t('info_site', {m:mapsText(pool.entries), e:pool.editions}) : '')
+    : pool ? t('info', {c:d.collections.length, m:mapsText(pool.entries)}) : t('info_nopool', {c:d.collections.length});
+
+  chips($('skills'), d.skills.map(s => ({ key:s.key, label:LANG === 'en' ? s.title_en : s.title,
+                                          tip:LANG === 'en' ? s.desc_en : s.desc })), picked.skills);
+  chips($('status'), ['ranked','loved','approved','qualified'].map(s => ({key:s, label:s})), picked.status);
+  chips($('genres'), d.genres.map(g => ({ key:String(g.id), label:LANG === 'en' ? g.en : g.ru })), picked.genres);
+
+  const g = $('slots'); g.innerHTML = '';
+  $('nopool').hidden = !!pool; $('nopool').textContent = t('pools_empty');
+  if (pool){
+    const groups = {};
+    pool.slots.forEach(([slot, n]) => { if (n < 25) return; const mod = slot.replace(/\d+$/, ''); (groups[mod] = groups[mod] || []).push([slot, n]); });
+    ['NM','HD','HR','DT','FM','TB','EZ','FL'].forEach(mod => {
+      if (!groups[mod]) return;
+      const row = document.createElement('div'); row.className = 'slotrow';
+      const b = document.createElement('button'); b.className = 'mod'; b.textContent = mod; b.type = 'button';
+      b.onclick = () => { const all = groups[mod].map(x => x[0]); const on = all.every(s => picked.slots.has(s));
+        all.forEach(s => on ? picked.slots.delete(s) : picked.slots.add(s)); store(); render(); };
+      const box = document.createElement('div'); box.className = 'chips';
+      groups[mod].forEach(([slot, n]) => box.appendChild(chip(slot, { on:picked.slots.has(slot), sub:n, click:toggler(picked.slots, slot) })));
+      row.appendChild(b); row.appendChild(box); g.appendChild(row);
+    });
+    const dg = pool.digits || {};
+    chips($('digits'), [['open','open'],['3','3-digit'],['4','4-digit'],['5','5-digit'],['6','6-digit'],['unknown','?']].map(([k, lab]) => {
+      const n = k === 'unknown' ? dg['?'] : k === '6' ? (dg['6-digit'] || 0) + (dg['7-digit'] || 0) : dg[lab];
+      return { key:k, label:k === 'unknown' ? t('unknown') : lab, sub:n || 0 };
+    }), picked.digits);
+    const tr = pool.tiers || {};
+    chips($('tiers'), ['S','A','B','C','D','?'].map(k => ({ key:k, label:k, sub:tr[k] || 0 })), picked.tiers);
+    const sr = pool.sources || {};
+    chips($('sources'), ['osu!wiki','Liquipedia'].map(k => ({ key:k, label:k, sub:sr[k] || 0 })), picked.sources);
+  } else { ['digits','tiers','sources'].forEach(id => $(id).innerHTML = ''); }
+  renderTours();
+  if (!SITE) { renderCollections(); renderEnv(); }
+  if (LASTRESULT) showResults(LASTRESULT);
+  updateButtons();
+}
+
+function renderTours(){
+  const box = $('tourpicked'); box.innerHTML = '';
+  picked.tours.forEach(name => box.appendChild(chip(name + ' ✕', { on:true, click:() => {
+    picked.tours = picked.tours.filter(x => x !== name); renderTours(); } })));
+}
+function suggest(){
+  const q = $('tourinput').value.trim().toLowerCase(), box = $('suggest');
+  const list = (DATA && DATA.pool) ? DATA.pool.tournaments : [];
+  const items = q ? list.filter(n => n.toLowerCase().includes(q) && !picked.tours.includes(n)).slice(0, 40) : [];
+  box.innerHTML = '';
+  if (q && !items.some(n => n.toLowerCase() === q)) items.unshift('«' + $('tourinput').value.trim() + '»');
+  items.forEach((n, i) => { const d = document.createElement('div'); d.textContent = n; if (!i) d.className = 'hl';
+    d.onmousedown = e => { e.preventDefault(); addTour(n); }; box.appendChild(d); });
+  box.style.display = items.length ? 'block' : 'none';
+}
+function addTour(n){
+  n = n.replace(/^«|»$/g, '').trim(); if (!n || picked.tours.includes(n)) return;
+  picked.tours.push(n); $('tourinput').value = ''; $('suggest').style.display = 'none'; renderTours(); store();
+}
+$('tourinput').addEventListener('input', suggest);
+$('tourinput').addEventListener('keydown', e => { if (e.key === 'Enter'){ e.preventDefault();
+  const first = $('suggest').querySelector('div'); if (first) addTour(first.textContent); }
+  if (e.key === 'Escape') $('suggest').style.display = 'none'; });
+$('tourinput').addEventListener('blur', () => setTimeout(() => $('suggest').style.display = 'none', 150));
+
+function renderCollections(){
+  const box = $('collections'); box.innerHTML = '';
+  if (DATA.collections_error){ box.innerHTML = '<div class="empty" style="color:var(--err)">' + esc(DATA.collections_error) + '</div>'; return; }
+  if (!DATA.collections.length){ box.innerHTML = '<div class="empty">' + esc(t('no_collections')) + '</div>'; return; }
+  DATA.collections.forEach(c => {
+    const d = document.createElement('div'); d.className = 'col';
+    d.innerHTML = '<div class="nm">' + esc(c.name) + ' <span>· ' + c.count + '</span></div>';
+    const b = document.createElement('button'); b.textContent = '✕'; b.setAttribute('aria-label', 'delete');
+    b.onclick = async () => { if (!confirm(t('confirm_delete', {n:c.name}))) return;
+      try { await api('/api/collection/delete', {name:c.name, lang:LANG}); } catch(e){ alert(e.message); }
+      load(); };
+    d.appendChild(b); box.appendChild(d);
+  });
+}
+
+function writable(){ const e = DATA && DATA.env; return !!(e && e.osu_data && e.node && e.realm_module && e.realm_ok); }
+
+function renderEnv(){
+  const e = DATA.env, li = [];
+  const add = (ok, text, level) => li.push('<li class="' + (ok ? 'ok' : (level || 'bad')) + '">' + (ok ? '✓' : '✕') + ' <span>' + esc(text) + '</span></li>');
+  add(!!e.osu_data, e.osu_data ? t('env_data_ok') : t('env_data_bad'));
+  if (e.osu_data) li.push('<li class="path">' + esc(e.osu_data) + '</li>');
+  if (e.osu_data) add(e.realm_ok, e.realm_ok ? t('env_fmt_ok', {f:e.realm_format}) : t('env_fmt_bad', {f:e.realm_format, x:e.expected_format}));
+  add(!!e.osu_exe, e.osu_exe ? t('env_exe_ok') : t('env_exe_bad'), 'warn');
+  if (e.osu_exe) li.push('<li class="path">' + esc(e.osu_exe) + '</li>');
+  add(e.node, e.node ? t('env_node_ok') : t('env_node_bad'));
+  add(e.realm_module, e.realm_module ? t('env_mod_ok') : t('env_mod_bad'));
+  $('envlist').innerHTML = li.join('');
+  const c = e.config || {};
+  ['osu_data','osu_exe','contact','project_url'].forEach(k => { const el = $('cfg_' + k); if (document.activeElement !== el) el.value = c[k] || ''; });
+  const p = DATA.pool;
+  $('poolinfo').textContent = p ? t('pools_info', {m:mapsText(p.entries), e:p.editions, d:p.updated}) : t('pools_empty');
+
+  let msg = '', cls = 'banner err';
+  if (!e.osu_data) msg = t('banner_data');
+  else if (!e.node || !e.realm_module) msg = t('banner_node');
+  else if (!e.realm_ok) msg = t('banner_fmt');
+  $('banner').hidden = !msg; $('banner').className = cls; $('bannertext').textContent = msg; $('bannerbtn').hidden = false;
+}
+
+function updateButtons(){
+  const busy = !!JOB;
+  $('btn-dry').disabled = busy; $('btn-stop').disabled = !busy; $('btn-pools').disabled = busy;
+  $('btn-run').disabled = busy || (!SITE && !writable());
+}
+
+/* ============================== запуск ============================== */
+function setMode(m){
+  MODE = m; hideTip();
+  $('tab-skill').classList.toggle('on', m === 'skill'); $('tab-tour').classList.toggle('on', m === 'tour');
+  $('pane-skill').hidden = m !== 'skill'; $('pane-tour').hidden = m !== 'tour'; store();
+}
+/* номера сложностей из ссылок (…#osu/123, /b/123, /beatmaps/123) и просто чисел; номер набора не нужен */
+function ids(text){
+  const out = [], add = v => { if (!out.includes(v)) out.push(v); };
+  for (const m of text.matchAll(/#osu\/(\d+)|\/(?:b|beatmaps)\/(\d+)/g)) add(m[1] || m[2]);
+  text.replace(/https?:\/\/\S+/g, ' ').replace(/\b(\d{3,})\b/g, (_m, v) => { add(v); return ''; });
+  return out.join(',');
+}
+const num = id => $(id).value === '' ? undefined : +$(id).value;
+
+function params(dry){
+  const p = { lang:LANG, stars:rangeParam('r_stars', 0, 20, true), count:num('count') || 30,
+              name:$('name').value.trim(), dry_run:dry, no_download:$('no_download').checked,
+              no_collection:$('no_collection').checked, split:num('split'),
+              bpm:rangeParam('r_bpm', 0, 10000), length:rangeParam('r_length', 0, 100000),
+              genres:[...picked.genres].join(','), words:$('words').value.trim() };
+  if (MODE === 'tour'){
+    if (!picked.slots.size){ alert(t('need_slot')); return null; }
+    Object.assign(p, { tournament:[...picked.slots].join(','), years:rangeParam('r_years', 2000, 2100),
+      tours:picked.tours.join(','), digits:[...picked.digits].join(','), tiers:[...picked.tiers].join(','),
+      sources:[...picked.sources].join(','), per_tournament:num('per_tournament'), max_lookups:num('max_lookups') });
+  } else {
+    const like = ids($('like').value);
+    if (!picked.skills.size && !like){ alert(t('need_skill')); return null; }
+    Object.assign(p, { skill:[...picked.skills].join(','), like:like, like_weight:num('like_weight'),
+      min_pc:num('min_pc'), pop_weight:num('pop_weight'), stream_bpm:rangeParam('r_stream', 0, 1000),
+      status:[...picked.status].join(',') || 'ranked', pool:num('pool'), depth:num('depth'),
+      per_set:num('per_set'), threads:num('threads'), local_only:$('local_only').checked, skip_owned:$('skip_owned').checked,
+      min_score:num('min_score') });
+  }
+  return p;
+}
+
+async function run(dry){
+  const p = params(dry); if (!p) return;
+  store(); LASTRESULT = null;
+  $('log').textContent = ''; $('results').querySelector('tbody').innerHTML = ''; $('rescount').textContent = '';
+  $('noresults').hidden = false; $('shareline').hidden = true;
+  setState(t('working'), '');
+  try { const r = await api('/api/run', p); follow(r.id); }
+  catch(e){ setState(e.status === 429 ? t('too_many') : e.message, 'err'); }
+}
+async function refreshPools(){
+  $('log').textContent = ''; setState(t('pools_building'), '');
+  try { const r = await api('/api/pools/refresh', {lang:LANG}); follow(r.id); closeModal('settings'); } catch(e){ setState(e.message, 'err'); }
+}
+function follow(id){ JOB = id; SEEN = 0; updateButtons(); clearInterval(TIMER); TIMER = setInterval(poll, 800); }
+async function stop(){ if (JOB) try { await api('/api/cancel', {id:JOB}); } catch(e){} }
+function setState(text, cls){ $('state').textContent = text; $('state').className = 'state ' + (cls || ''); }
+
+async function poll(){
+  if (!JOB) return;
+  let d; try { d = await api('/api/job?id=' + encodeURIComponent(JOB) + '&from=' + SEEN); } catch(e){ return; }
+  if (d.lines && d.lines.length){
+    SEEN = d.total; const log = $('log');
+    log.textContent += (log.textContent ? '\n' : '') + d.lines.join('\n'); log.scrollTop = log.scrollHeight;
+  }
+  if (d.state === 'queued') { setState(t('queued'), ''); return; }
+  if (d.state === 'running') { if ($('state').textContent === t('queued')) setState(t('working'), ''); return; }
+  clearInterval(TIMER); TIMER = null; JOB = null; updateButtons();
+  if (d.state === 'done'){
+    setState(t('done'), 'ok');
+    if ((d.kind === 'run' || d.kind === 'import') && d.result){ LASTRESULT = d.result; showResults(d.result); }
+    if (!SITE) load();
+  }
+  else if (d.state === 'cancelled') setState(t('cancelled'), '');
+  else setState(d.error || 'error', 'err');
+}
+
+function showResults(res){
+  const tb = $('results').querySelector('tbody');
+  tb.innerHTML = '<tr><th>★</th><th>' + esc(t('th_map')) + '</th><th>' + esc(t('th_why')) + '</th>' +
+                 (SITE ? '<th>' + esc(t('th_get')) + '</th>' : '') + '</tr>';
+  res.picked.forEach(c => {
+    const tr = document.createElement('tr');
+    const why = c.page ? '<a href="' + esc(c.page) + '" target="_blank" rel="noopener">' + esc(c.why) + '</a>' : esc(c.why);
+    const badge = c.owned == null ? '' : '<span class="badge ' + (c.owned ? '' : 'new') + '">' + esc(c.owned ? t('owned') : t('new_')) + '</span>';
+    const links = SITE ? '<td class="get">' + (c.links || []).map(([l, u]) => '<a href="' + esc(u) + '" target="_blank" rel="noopener">' + esc(l) + '</a>').join('') + '</td>' : '';
+    tr.innerHTML = '<td class="sr">' + (+c.sr).toFixed(2) + (c.score ? '<small>' + c.score + '</small>' : '') + '</td>' +
+      '<td class="map"><a href="https://osu.ppy.sh/b/' + (+c.bid) + '" target="_blank" rel="noopener">' + esc(c.artist) + ' - ' + esc(c.title) +
+      '</a> <span class="diff">[' + esc(c.diff) + ']</span>' + badge + '</td><td class="why">' + why + '</td>' + links;
+    tb.appendChild(tr);
+  });
+  $('noresults').hidden = res.picked.length > 0;
+  $('rescount').textContent = (res.name ? ' · ' + res.name : '') + t('res_count', {m:mapsText(res.picked.length)}) + (res.downloaded ? t('res_dl', {n:res.downloaded}) : '');
+  if (SITE && res.share){
+    $('shareline').hidden = false;
+    $('sharelink').value = location.origin + '/s/' + res.share;
+    history.replaceState(null, '', '/?share=' + res.share);
+  }
+}
+
+/* ============================== сайт: добавить в игру ============================== */
+async function localAppRunning(){
+  try {
+    const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 1500);
+    const r = await fetch(LOCAL_APP + '/api/ping', {signal:ctl.signal, mode:'cors'});
+    clearTimeout(tm);
+    const d = await r.json(); return d.app === 'osu-trainer';
+  } catch(e){ return false; }
+}
+function openLocal(){
+  closeModal('installbox');
+  window.open(LOCAL_APP + '/?import=' + encodeURIComponent(LASTRESULT.share) + '&site=' + encodeURIComponent(location.origin), '_blank');
+}
+async function addToGame(){
+  if (!LASTRESULT || !LASTRESULT.share) return;
+  closeModal('installbox');
+  if (await localAppRunning()){
+    openLocal();
+  } else {
+    const ins = DATA.install;
+    $('cmd_win').textContent = ins.windows; $('cmd_unix').textContent = ins.unix; $('repolink').href = ins.repo;
+    $('installbox').classList.add('open');
+  }
+}
+async function copyText(text, btn){
+  try { await navigator.clipboard.writeText(text); } catch(e){
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); } catch(_){} ta.remove(); }
+  if (btn){ const old = btn.textContent; btn.textContent = t('copied'); setTimeout(() => btn.textContent = old, 1200); }
+}
+
+/* ============================== локально: подборка с сайта ============================== */
+async function checkImport(){
+  const q = new URLSearchParams(location.search);
+  if (SITE || !q.get('import') || !q.get('site')) return;
+  IMPORT = { id:q.get('import'), site:q.get('site') };
+  try {
+    IMPORT.preview = await api('/api/import/preview', {site:IMPORT.site, id:IMPORT.id, lang:LANG});
+    showImport();
+    LASTRESULT = { name:IMPORT.preview.name, picked:IMPORT.preview.maps }; showResults(LASTRESULT);
+  } catch(e){
+    $('importbox').hidden = false; $('importtext').textContent = t('import_bad', {e:e.message});
+  }
+}
+function showImport(){
+  $('importbox').hidden = false;
+  $('importtext').textContent = t('import_text', {site:IMPORT.site, name:IMPORT.preview.name, m:mapsText(IMPORT.preview.count)});
+}
+function cancelImport(){ $('importbox').hidden = true; IMPORT = null; history.replaceState(null, '', '/'); }
+async function doImport(){
+  if (!IMPORT || !IMPORT.preview) return;
+  $('importbox').hidden = true; $('log').textContent = ''; setState(t('working'), '');
+  try { const r = await api('/api/import', {site:IMPORT.site, id:IMPORT.id, lang:LANG}); follow(r.id); }
+  catch(e){ setState(e.message, 'err'); }
+  history.replaceState(null, '', '/'); IMPORT = null;
+}
+
+/* сайт: открыть подборку по ссылке */
+async function checkShare(){
+  const id = new URLSearchParams(location.search).get('share');
+  if (!SITE || !id) return;
+  try { const s = await api('/api/share/' + encodeURIComponent(id));
+        LASTRESULT = { name:s.name, picked:s.maps, share:s.id }; showResults(LASTRESULT); } catch(e){}
+}
+
+/* ============================== настройки ============================== */
+function openSettings(){ $('settings').classList.add('open'); }
+function closeModal(id){ $(id).classList.remove('open'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') { closeModal('settings'); closeModal('installbox'); } });
+async function saveSettings(){
+  const body = {}; ['osu_data','osu_exe','contact','project_url'].forEach(k => body[k] = $('cfg_' + k).value.trim());
+  body.language = LANG;
+  try { await api('/api/config', body); await load(); } catch(e){ alert(e.message); }
+}
+
+document.querySelectorAll('#langseg button').forEach(b => b.onclick = () => {
+  LANG = b.dataset.lang; applyLang(); store(); if (!SITE) api('/api/config', {language:LANG}).catch(() => {}); });
+FIELDS.forEach(f => $(f).addEventListener('change', store));
+
+async function load(){
+  try { DATA = await api('/api/init?lang=' + LANG); }
+  catch(e){ $('info').textContent = e.message; return; }
+  const wasSite = SITE; SITE = DATA.mode === 'server';
+  document.querySelectorAll('.localonly').forEach(el => el.hidden = SITE);
+  $('btn-settings').hidden = SITE;
+  if (SITE){ $('banner').hidden = false; $('banner').className = 'banner info'; $('bannertext').textContent = t('banner_site'); $('bannerbtn').hidden = true; }
+  if (SITE !== wasSite) applyLang();
+  render();
+}
+
+restore();
+RANGES.forEach(rangeInit);
+applyLang(); setMode(MODE);
+load().then(() => { checkImport(); checkShare(); });
+</script>
+</body>
+</html>
