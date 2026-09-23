@@ -1,8 +1,12 @@
 #!/bin/sh
 # Подключение уведомлений обратной связи osu!trainer к Telegram. Запускать на сервере от root,
-# в интерактивном терминале (токен вводится с клавиатуры и не попадает ни в историю, ни в чат):
+# в интерактивном терминале (токен вводится с клавиатуры и не попадает ни в историю, ни в чат).
+# Команда одинаково работает из cmd, PowerShell и bash - без вложенных кавычек и $, которые
+# cmd не понимает, а PowerShell 5.1 теряет при передаче аргументов в ssh:
 #
-#   ssh -t vps 'sh -c "$(curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/telegram-setup.sh)"'
+#   ssh -t vps "curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/telegram-setup.sh -o osu-tg.sh && sh osu-tg.sh; rm -f osu-tg.sh"
+#
+# (скрипт сначала скачивается в файл: при "curl | sh" read читал бы не с клавиатуры, а из самого скрипта)
 #
 # Что делает: проверяет токен бота, находит твой чат (после того как ты напишешь боту),
 # сохраняет токен и chat id в /etc/osu-trainer.env (только root), перезапускает сайт
