@@ -392,8 +392,8 @@
     <code class="cmd" id="cmd_unix" onclick="copyText(this.textContent)"></code>
     <p><span data-i18n="install_after"></span> <a id="repolink" target="_blank" rel="noopener">GitHub</a></p>
     <div class="actions">
-      <button class="btn go" onclick="addToGame()" data-i18n="try_again"></button>
-      <button class="btn alt" onclick="openLocal()" data-i18n="open_local"></button>
+      <button class="btn go" onclick="openLocal()" data-i18n="open_local"></button>
+      <button class="btn alt" onclick="addToGame()" data-i18n="try_again"></button>
       <button class="btn alt" onclick="closeModal('installbox')" data-i18n="close"></button>
     </div>
   </div>
@@ -448,8 +448,8 @@ ru: {
   banner_site:'Это онлайн-версия: подбор работает здесь, а в игру коллекцию кладёт osu!trainer на компьютере — кнопка «Добавить в игру».',
   pools_building:'обновляю турнирную базу… (Liquipedia отдаёт данные медленно — такие у неё правила)',
   add_to_game:'Добавить в игру', copy_link:'Скопировать ссылку', copied:'Скопировано',
-  need_app_title:'Нужен osu!trainer на компьютере',
-  need_app_text:'Сайт не может сам записать коллекцию в игру — это делает osu!trainer на твоём компьютере. Установи его одной командой, запусти и нажми «Добавить в игру» ещё раз. Или просто скачай карты по ссылкам в таблице.',
+  need_app_title:'Сайт не нашёл osu!trainer на компьютере',
+  need_app_text:'Коллекцию в игру записывает osu!trainer на твоём компьютере. Если он уже запущен, а сайт его не видит (так бывает из-за блокировщика рекламы или настроек браузера), нажми «Уже установлен — открыть». Если ещё не установлен — поставь одной командой ниже, запусти и нажми «Добавить в игру» ещё раз. Можно и просто скачать карты по ссылкам в таблице.',
   install_win:'Windows — в PowerShell:', install_unix:'macOS / Linux — в терминале:', install_after:'Исходный код и инструкция:',
   try_again:'Попробовать снова',
   import_text:'Сайт {site} предлагает подборку «{name}» — {m}. Недостающие карты скачаются, коллекция появится в игре.',
@@ -543,8 +543,8 @@ en: {
   banner_site:'This is the online version: maps are selected here, and osu!trainer on your computer puts the collection into the game — use "Add to game".',
   pools_building:'updating the tournament database… (Liquipedia serves data slowly per its API terms)',
   add_to_game:'Add to game', copy_link:'Copy link', copied:'Copied',
-  need_app_title:'osu!trainer is needed on your computer',
-  need_app_text:"The website can't write a collection into your game — osu!trainer on your computer does that. Install it with one command, start it and press \"Add to game\" again. Or just download the maps from the links in the table.",
+  need_app_title:"The website couldn't find osu!trainer on your computer",
+  need_app_text:"osu!trainer on your computer writes the collection into your game. If it is already running but the website can't see it (an ad blocker or browser settings can cause this), press \"Already installed — open\". If it isn't installed yet, install it with one command below, start it and press \"Add to game\" again. Or just download the maps from the links in the table.",
   install_win:'Windows — in PowerShell:', install_unix:'macOS / Linux — in a terminal:', install_after:'Source code and instructions:',
   try_again:'Try again',
   import_text:'{site} offers the selection "{name}" — {m}. Missing maps will be downloaded and the collection will appear in the game.',
