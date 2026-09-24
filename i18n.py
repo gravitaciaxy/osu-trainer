@@ -57,7 +57,7 @@ EN = {
     "пик %.1f нот/с, %.0f BPM": "peak %.1f notes/s, %.0f BPM",
     "%.1f мин, streams %.0f%%, %.1f нот/с": "%.1f min, streams %.0f%%, %.1f notes/s",
     "разброс SV %.2f, необычных делений ритма %.0f%%": "SV spread %.2f, unusual snaps %.0f%%",
-    "смен ритма %.0f%%, разнообразие ритма %.1f": "rhythm changes %.0f%%, rhythm variety %.1f",
+    "смен ритма %.0f%%, разнообразие быстрого ритма %.1f": "rhythm changes %.0f%%, fast rhythm variety %.1f",
     "AR %.1f, %.1f нот/с": "AR %.1f, %.1f notes/s",
     "CS %.1f, OD %.1f": "CS %.1f, OD %.1f",
     "sliders %.0f%%, spacing %.1f×": "sliders %.0f%%, spacing %.1f×",
@@ -80,6 +80,11 @@ EN = {
     "Сайт %s не в списке разрешённых": "Site %s is not in the allowed list",
     "Подборка не найдена или устарела": "The selection was not found or has expired",
     "Подборка «%s», карт: %d": "Selection \"%s\", maps: %d",
+    "  из коллекций игроков (osu!Collector): %d": "  from player collections (osu!Collector): %d",
+    "  карт-образцов нет в коллекциях игроков osu!Collector":
+        "  the reference maps are not in any osu!Collector player collection",
+    "osu!Collector: подборок «%s»: %d": "osu!Collector: \"%s\" collections: %d",
+    "osu!Collector: общих подборок с образцами: %d": "osu!Collector: collections shared with the reference maps: %d",
 }
 
 ES = {
@@ -126,7 +131,7 @@ ES = {
     "пик %.1f нот/с, %.0f BPM": "pico %.1f notas/s, %.0f BPM",
     "%.1f мин, streams %.0f%%, %.1f нот/с": "%.1f min, streams %.0f%%, %.1f notas/s",
     "разброс SV %.2f, необычных делений ритма %.0f%%": "variación de SV %.2f, snaps inusuales %.0f%%",
-    "смен ритма %.0f%%, разнообразие ритма %.1f": "cambios de ritmo %.0f%%, variedad rítmica %.1f",
+    "смен ритма %.0f%%, разнообразие быстрого ритма %.1f": "cambios de ritmo %.0f%%, variedad del ritmo rápido %.1f",
     "AR %.1f, %.1f нот/с": "AR %.1f, %.1f notas/s",
     "CS %.1f, OD %.1f": "CS %.1f, OD %.1f",
     "sliders %.0f%%, spacing %.1f×": "sliders %.0f%%, spacing %.1f×",
@@ -149,6 +154,11 @@ ES = {
     "Сайт %s не в списке разрешённых": "El sitio %s no está en la lista de permitidos",
     "Подборка не найдена или устарела": "La selección no existe o ha caducado",
     "Подборка «%s», карт: %d": "Selección \"%s\", mapas: %d",
+    "  из коллекций игроков (osu!Collector): %d": "  de colecciones de jugadores (osu!Collector): %d",
+    "  карт-образцов нет в коллекциях игроков osu!Collector":
+        "  los mapas de referencia no están en ninguna colección de jugadores de osu!Collector",
+    "osu!Collector: подборок «%s»: %d": "osu!Collector: colecciones «%s»: %d",
+    "osu!Collector: общих подборок с образцами: %d": "osu!Collector: colecciones compartidas con los mapas de referencia: %d",
 }
 
 TRANSLATIONS = {"en": EN, "es": ES}

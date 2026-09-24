@@ -21,6 +21,7 @@ FEATURE_NAMES = {
     "stream_bpm": ("BPM streams", "stream BPM", "BPM de streams"), "max_run": ("длина streams", "stream length", "longitud de streams"),
     "switch_ratio": ("смены ритма", "rhythm changes", "cambios de ritmo"), "odd_ratio": ("необычные деления", "unusual snaps", "snaps inusuales"),
     "rhythm_entropy": ("разнообразие ритма", "rhythm variety", "variedad rítmica"), "sv_var": ("SV", "SV", "SV"),
+    "tap_entropy": ("разнообразие быстрого ритма", "fast rhythm variety", "variedad del ritmo rápido"),
     "slider_ratio": ("доля sliders", "slider share", "proporción de sliders"), "slider_anchors": ("форма sliders", "slider shapes", "forma de los sliders"),
     "aim_velocity": ("скорость курсора", "cursor speed", "velocidad del cursor"), "aim_spacing": ("spacing", "spacing", "spacing"),
     "cs": ("CS", "CS", "CS"), "ar": ("AR", "AR", "AR"),
@@ -68,9 +69,9 @@ def _tech(m):
 
 
 def _fingercontrol(m):
-    s = (45 * sc(m["switch_ratio"], 0.15, 0.45) + 25 * sc(m["rhythm_entropy"], 1.6, 3.0)
+    s = (45 * sc(m["switch_ratio"], 0.12, 0.35) + 25 * sc(m["tap_entropy"], 0.05, 0.8)
          + 15 * sc(m["odd_ratio"], 0.01, 0.10) + 15 * sc(m["nps_max"], 5, 10))
-    return s, _("смен ритма %.0f%%, разнообразие ритма %.1f", m["switch_ratio"] * 100, m["rhythm_entropy"])
+    return s, _("смен ритма %.0f%%, разнообразие быстрого ритма %.1f", m["switch_ratio"] * 100, m["tap_entropy"])
 
 
 def _reading(m):
@@ -146,12 +147,15 @@ SKILLS = {
         score=_tech, min_score=50),
     "fingercontrol": dict(
         title="Finger control", title_en="Finger control",
-        desc="Частые смены ритма: bursts, триоли, чередование 1/2 и 1/4 — нужен точный контроль пальцев.",
-        desc_en="Frequent rhythm changes: bursts, triplets, 1/2 and 1/4 switching — needs precise finger control.",
-        desc_es="Cambios de ritmo frecuentes: bursts, tresillos, alternancia de 1/2 y 1/4. Exige un control preciso de los dedos.",
+        desc="Частые смены ритма в быстрых местах: bursts, триоли, 1/3 и 1/6 вперемешку с 1/4 — нужен точный "
+             "контроль пальцев. Медленные части и паузы не считаются.",
+        desc_en="Frequent rhythm changes at speed: bursts, triplets, 1/3 and 1/6 mixed with 1/4 — needs precise "
+                "finger control. Slow sections and pauses don't count.",
+        desc_es="Cambios de ritmo frecuentes a velocidad: bursts, tresillos, 1/3 y 1/6 mezclados con 1/4. Exige un "
+                "control preciso de los dedos. Las partes lentas y las pausas no cuentan.",
         aliases=["fc", "фингер", "фингерконтроль", "finger control"],
         queries=["finger control", "fingercontrol", "rhythm complex", "polyrhythm"],
-        score=_fingercontrol, min_score=50),
+        score=_fingercontrol, min_score=45),
     "reading": dict(
         title="Reading", title_en="Reading",
         desc="Низкий AR и высокая плотность: карту трудно прочитать, а не нажать.",
@@ -215,6 +219,7 @@ PROFILE_FEATURES = {
     "switch_ratio": (0.12, 2.0),
     "odd_ratio": (0.04, 1.0),
     "rhythm_entropy": (0.4, 1.5),
+    "tap_entropy": (0.3, 1.0),
     "sv_var": (0.25, 0.6),
     "slider_ratio": (0.10, 1.0),
     "slider_anchors": (0.5, 0.4),

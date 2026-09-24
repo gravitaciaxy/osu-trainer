@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 """
-Веб-интерфейс osu!trainer.
+Веб-интерфейс osu!drill.
 
 Локальный режим (по умолчанию): http://127.0.0.1:8730 - подбор, скачивание, коллекции в игре,
 приём подборок с сайта по кнопке «Добавить в игру».
 
 Серверный режим (--server): публичный сайт за nginx - только подбор и ссылки на карты;
-в игру коллекцию кладёт локальный osu!trainer пользователя.
+в игру коллекцию кладёт локальный osu!drill пользователя.
 """
 import argparse
 import collections
@@ -25,6 +25,7 @@ import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import collector  # noqa: E402
 import config  # noqa: E402
 import feedback  # noqa: E402
 import i18n  # noqa: E402
@@ -193,7 +194,7 @@ def fetch_remote_share(site, sid):
     if r.status_code != 200:
         raise RuntimeError(i18n._("Подборка не найдена или устарела"))
     data = r.json()
-    name = re.sub(r"[\r\n\t]", " ", str(data.get("name") or "osu!trainer"))[:100]
+    name = re.sub(r"[\r\n\t]", " ", str(data.get("name") or "osu!drill"))[:100]
     return name, clean_maps(data.get("maps"))
 
 
@@ -326,7 +327,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
         return host in ok
 
     def _cors(self):
-        """CORS для /api/ping: сайт проверяет, запущен ли локальный osu!trainer."""
+        """CORS для /api/ping: сайт проверяет, запущен ли локальный osu!drill."""
         origin = self.headers.get("Origin") or ""
         if MODE == "local" and allowed_site(origin):
             return {"Access-Control-Allow-Origin": origin, "Vary": "Origin",
@@ -481,7 +482,7 @@ def main():
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     except Exception:
         pass
-    p = argparse.ArgumentParser(description="osu!trainer UI")
+    p = argparse.ArgumentParser(description="osu!drill UI")
     p.add_argument("--port", type=int, default=None)
     p.add_argument("--no-browser", action="store_true", help="не открывать браузер")
     p.add_argument("--server", action="store_true", help="режим публичного сайта (за nginx)")
@@ -508,8 +509,10 @@ def main():
         raise SystemExit("Не удалось занять порт %d" % port)
 
     threading.Thread(target=cleanup_loop, daemon=True).start()
+    # база коллекций игроков грузится несколько секунд - заранее, чтобы первый подбор не ждал
+    threading.Thread(target=collector.load, daemon=True).start()
     url = "http://127.0.0.1:%d/" % PORT
-    print("osu!trainer %s [%s] -> %s  (Ctrl+C - выход)" % (config.VERSION, MODE, url), flush=True)
+    print("osu!drill %s [%s] -> %s  (Ctrl+C - выход)" % (config.VERSION, MODE, url), flush=True)
     if MODE == "local" and not args.no_browser and os.environ.get("OSU_TRAINER_NO_OPEN") != "1":
         threading.Timer(0.8, lambda: webbrowser.open(url)).start()
     try:

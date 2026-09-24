@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# osu!trainer: install dependencies (macOS / Linux). Easier: the one-line install.sh from the README.
+# osu!drill: install dependencies (macOS / Linux). Easier: the one-line install.sh from the README.
 set -e
 cd "$(dirname "$0")"
 command -v python3 >/dev/null 2>&1 || { echo "Python 3.9+ is required"; exit 1; }

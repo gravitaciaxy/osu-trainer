@@ -127,6 +127,7 @@ BUCKETS = {
     "osu.direct": Bucket(90, 5, 2.2),
     "catboy.best": Bucket(50, 3, 2.5),
     "osu.ppy.sh": Bucket(80, 4, 2.0),
+    "osucollector.com": Bucket(40, 1, 1.4),     # сайт энтузиаста: по одному запросу, не чаще раза в 1.4 с
 }
 DISABLED = {}
 _lock = threading.Lock()
@@ -149,7 +150,7 @@ def _disabled(host):
     return True
 
 
-def get(url, params=None, stream=False, timeout=30, tries=3):
+def get(url, params=None, stream=False, timeout=30, tries=3, headers=None):
     host = urllib.parse.urlparse(url).netloc
     if _disabled(host):
         return None
@@ -158,7 +159,7 @@ def get(url, params=None, stream=False, timeout=30, tries=3):
         if bucket:
             bucket.wait()
         try:
-            r = fetch(url, params=params, timeout=timeout, stream=stream)
+            r = fetch(url, params=params, headers=headers, timeout=timeout, stream=stream)
         except (OSError, ValueError):
             time.sleep(1.0 + attempt)
             continue

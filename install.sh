@@ -1,5 +1,5 @@
 #!/usr/bin/env sh
-# osu!trainer - one-line installer for macOS / Linux:
+# osu!drill - one-line installer for macOS / Linux:
 #
 #   curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.sh | sh
 #
@@ -10,7 +10,7 @@ case "$(uname -s)" in
   Darwin) DIR="$HOME/Library/Application Support/osu-trainer" ;;
   *) DIR="${XDG_DATA_HOME:-$HOME/.local/share}/osu-trainer" ;;
 esac
-say() { printf "\033[35m[osu!trainer]\033[0m %s\n" "$1"; }
+say() { printf "\033[35m[osu!drill]\033[0m %s\n" "$1"; }
 command -v python3 >/dev/null 2>&1 || { say "Python 3.9+ is required: https://www.python.org/downloads/"; exit 1; }
 command -v node >/dev/null 2>&1 || { say "Node.js 18+ is required: https://nodejs.org/"; exit 1; }
 python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)' || { say "Python is too old (need 3.9+)"; exit 1; }

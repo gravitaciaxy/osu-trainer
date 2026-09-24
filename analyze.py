@@ -2,6 +2,11 @@
 import math
 from collections import Counter
 
+STREAM_MAX_MS = 150     # 1/4 медленнее ~100 BPM - уже не streams (чаще всего слоупарт с половинным BPM)
+FAST_MS = 130           # быстрый промежуток между нотами: 1/4 от 115 BPM, 1/3 от 154 BPM
+PAUSE_MS = 400          # промежуток длиннее - пауза, а не ритм
+SNAPS = (1 / 16, 1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4, 1.0)
+
 
 def _sections(text):
     sec, cur = {}, None
@@ -15,6 +20,21 @@ def _sections(text):
         elif cur:
             sec[cur].append(line)
     return sec
+
+
+def metadata(text):
+    """Раздел [Metadata] .osu: Title, Artist, Creator, Version, Tags, BeatmapSetID..."""
+    meta, inside = {}, False
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith("[") and line.endswith("]"):
+            if inside:
+                break
+            inside = line == "[Metadata]"
+        elif inside and ":" in line:
+            k, v = line.split(":", 1)
+            meta[k.strip()] = v.strip()
+    return meta
 
 
 def parse_osu(text):
@@ -117,13 +137,13 @@ def metrics(text):
     if not gaps:
         return None
 
-    # --- стримы: цепочки 1/4 (и 1/6, 1/8) ---
-    def is_stream_gap(snap):
-        return 0.10 <= snap <= 0.30
+    # --- стримы: цепочки 1/4 (и 1/6, 1/8) на настоящей скорости ---
+    def is_stream_gap(g):
+        return 0.10 <= g[1] <= 0.30 and g[0] <= STREAM_MAX_MS
 
     runs, cur = [], []
     for g in gaps:
-        if is_stream_gap(g[1]):
+        if is_stream_gap(g):
             cur.append(g)
         else:
             if len(cur) >= 3:
@@ -136,8 +156,11 @@ def metrics(text):
     stream_ratio = stream_notes / len(hits)
     max_run = max((len(r) + 1 for r in runs), default=0)
     stream_gaps = [g for r in runs for g in r]
-    stream_bpm = (15000.0 / (sum(g[0] for g in stream_gaps) / len(stream_gaps))
-                  if stream_gaps else 0)
+    # скорость основных стримов - по самым быстрым 40% стрим-промежутков. Среднее по всем врёт на
+    # картах со слоупартом (стримы 240 BPM и медленная середина давали «204 BPM»), а редкие
+    # короткие bursts на такую долю не влияют
+    fastest = sorted(g[0] for g in stream_gaps)[:max(1, len(stream_gaps) * 2 // 5)]
+    stream_bpm = 15000.0 / (sum(fastest) / len(fastest)) if stream_gaps else 0
     stream_spacing = (sum(g[2] for g in stream_gaps) / len(stream_gaps)
                       if stream_gaps else 0)
     long_runs = sum(1 for r in runs if len(r) >= 16)
@@ -178,10 +201,19 @@ def metrics(text):
     slider_ratio = len(sliders) / len(hits)
     anchors = (sum(o["anchors"] for o in sliders) / len(sliders)) if sliders else 0
 
-    # --- смена ритма (finger control) ---
-    switches = sum(1 for i in range(1, len(gaps))
-                   if abs(gaps[i][1] - gaps[i - 1][1]) > 0.1)
+    # --- смены ритма (finger control): соседние промежутки отличаются хотя бы в 1.2 раза (1/4 -> 1/3
+    # уже смена), и быстрый из них - действительно быстрый. Чередование 1/1 и 1/2 в слоупарте
+    # и паузы пальцы не нагружают, поэтому не считаются ---
+    switches = 0
+    for g1, g2 in zip(gaps, gaps[1:]):
+        lo, hi = min(g1[0], g2[0]), max(g1[0], g2[0])
+        if lo <= FAST_MS and hi <= PAUSE_MS and hi >= 1.2 * lo:
+            switches += 1
     switch_ratio = switches / len(gaps)
+    # разнообразие именно быстрого ритма: 1/4 вперемешку с 1/3, 1/6, 1/8
+    fast = Counter(min(SNAPS, key=lambda k: abs(g[1] - k)) for g in gaps if g[0] <= FAST_MS)
+    n_fast = sum(fast.values())
+    tap_entropy = sum(c / n_fast * math.log2(n_fast / c) for c in fast.values()) if n_fast else 0.0
 
     return dict(
         cs=cs,
@@ -207,4 +239,5 @@ def metrics(text):
         slider_ratio=round(slider_ratio, 3),
         slider_anchors=round(anchors, 2),
         switch_ratio=round(switch_ratio, 3),
+        tap_entropy=round(tap_entropy, 2),
     )

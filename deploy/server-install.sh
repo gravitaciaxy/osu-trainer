@@ -1,5 +1,5 @@
 #!/bin/sh
-# Установка и обновление сайта osu!trainer на сервере (Ubuntu / Debian). Запускать от root:
+# Установка и обновление сайта osu!drill на сервере (Ubuntu / Debian). Запускать от root:
 #
 #   curl -fsSL https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/deploy/server-install.sh | sh
 #
@@ -18,7 +18,7 @@ DOMAIN="${DOMAIN:-osu.gravitacia.art}"
 PORT="${PORT:-3002}"
 APP="${APP:-/opt/osu-trainer}"
 
-say() { printf "\033[35m[osu!trainer]\033[0m %s\n" "$1"; }
+say() { printf "\033[35m[osu!drill]\033[0m %s\n" "$1"; }
 
 [ "$(id -u)" = 0 ] || { say "Нужен root: запусти через sudo"; exit 1; }
 command -v python3 >/dev/null 2>&1 || { say "Нужен python3: apt install -y python3"; exit 1; }
@@ -41,7 +41,7 @@ SRC="$(find "$TMP/src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 
 id osutrainer >/dev/null 2>&1 || useradd --system --home-dir "$APP" --no-create-home --shell /usr/sbin/nologin osutrainer
 mkdir -p "$APP/cache"
-for f in analyze.py config.py feedback.py i18n.py liquipedia.py net.py pools.py skills.py trainer.py ui.py index.html; do
+for f in analyze.py collector.py config.py feedback.py i18n.py liquipedia.py net.py pools.py skills.py trainer.py ui.py index.html; do
     cp "$SRC/$f" "$APP/$f"
 done
 rm -rf "$APP/data"

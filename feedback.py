@@ -77,7 +77,7 @@ def save(entry, ip):
 
 def telegram_text(entry):
     ctx = entry["context"]
-    lines = ["%s · osu!trainer" % KINDS[entry["kind"]], "", entry["text"], ""]
+    lines = ["%s · osu!drill" % KINDS[entry["kind"]], "", entry["text"], ""]
     lines.append("Контакт: %s" % (entry["contact"] or "—"))
     lines.append(" · ".join(x for x in (ctx.get("mode"), ctx.get("lang"),
                                         "v" + ctx["version"] if ctx.get("version") else "") if x))

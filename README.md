@@ -1,6 +1,9 @@
-# osu!trainer
+# osu!drill
 
 **English** | [Русский](#русский) | [Español](#español)
+
+*Formerly osu!trainer — renamed so it isn't confused with
+[FunOrange's osu-trainer](https://github.com/FunOrange/osu-trainer). The repository keeps its old address.*
 
 Finds osu! maps for the skill you want to practise, maps similar to the ones you like, or maps from
 real tournament pools — and turns them into a ready collection in **osu!lazer**.
@@ -10,6 +13,9 @@ real tournament pools — and turns them into a ready collection in **osu!lazer*
   SV, note density).
 - **"More like these"** — paste links to maps you like and get maps with a similar profile
   (BPM, stream share, rhythm changes, sliders, spacing).
+- **Player collections** — thousands of lists from [osu!Collector](https://osucollector.com) that
+  players named "tech", "streams", "aim"… Maps from such lists become candidates and get a score
+  boost; with reference maps, so do the maps that most often share lists with them.
 - **Tournament pools** — 32,000+ maps from 450+ tournaments (osu!wiki + Liquipedia). Pick slots like
   NM2 / HD1 / DT3 / TB, stars, player rank range (open, 3/4/5/6-digit), tournament tier and years;
   the selection is drawn from different tournaments.
@@ -20,7 +26,7 @@ real tournament pools — and turns them into a ready collection in **osu!lazer*
 ## Online version
 
 **https://osu.gravitacia.art** — pick maps right on the website. Download them from the links in the
-table, or press **Add to game** to put the selection into osu! through osu!trainer on your computer.
+table, or press **Add to game** to put the selection into osu! through osu!drill on your computer.
 The "Guide" button on the site explains every step.
 
 ## One-line install
@@ -29,7 +35,7 @@ The "Guide" button on the site explains every step.
 ```powershell
 irm https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.ps1 | iex
 ```
-It installs to `%LOCALAPPDATA%\osu-trainer`, creates an "osu!trainer" shortcut and starts the app.
+It installs to `%LOCALAPPDATA%\osu-trainer`, creates an "osu!drill" shortcut and starts the app.
 If Python or Node.js is missing, portable copies are downloaded into the app folder — nothing is
 installed system-wide. Run the same command again to update.
 
@@ -82,6 +88,10 @@ python trainer.py --help
   [Liquipedia](https://liquipedia.net/osu) (CC BY-SA 3.0). A prebuilt database ships in `data/`;
   update it from Settings. Liquipedia is queried per its
   [API terms](https://liquipedia.net/api-terms-of-use): at most one request every 2 seconds, cached.
+- Player collections: [osu!Collector](https://osucollector.com) — public collections whose names
+  mention a skill; map details come from osu.direct. A prebuilt index ships in `data/`, so the app
+  itself never queries osu!Collector; `python collector.py build` refreshes the index (about 1.5 hours:
+  one request at a time, at most one every 1.4 seconds, cached).
 
 ## Your own website
 
@@ -97,9 +107,9 @@ Details, HTTPS and updates: [deploy/](deploy/README.md).
 |---|---|
 | "osu!lazer not found" | Set the folder that contains `client.realm` in Settings. |
 | "Node.js not found" / "dependencies are missing" | Run the install command again. |
-| "Database format is not supported" | A new lazer version changed the database format — update osu!trainer with the same command. |
+| "Database format is not supported" | A new lazer version changed the database format — update osu!drill with the same command. |
 | Maps don't show up in the game | Leave gameplay and go to the menu — lazer imports maps only there. |
-| The website can't see the app on "Add to game" | Start osu!trainer and allow local network access if the browser asks; or press "Already installed — open". |
+| The website can't see the app on "Add to game" | Start osu!drill and allow local network access if the browser asks; or press "Already installed — open". |
 | Port 8730 is busy | The app picks the next free port, or run `start.bat --port 9000`. |
 
 Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd. MIT licensed.
@@ -107,7 +117,10 @@ Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd. MIT license
 ---
 
 <a name="русский"></a>
-# osu!trainer — по-русски
+# osu!drill — по-русски
+
+*Раньше назывался osu!trainer; переименован, чтобы не путать с
+[osu-trainer от FunOrange](https://github.com/FunOrange/osu-trainer). Адрес репозитория прежний.*
 
 Подбирает карты osu! под навык, который хочешь тренировать, карты, похожие на любимые, или карты из
 настоящих турнирных пулов — и создаёт из них коллекцию в **osu!lazer**.
@@ -116,6 +129,9 @@ Not affiliated with ppy Pty Ltd. osu! is a trademark of ppy Pty Ltd. MIT license
   тегам: каждая кандидатка скачивается и разбирается по объектам — деления ритма, spacing, смены
   ритма, SV, плотность нот.
 - **«Хочу похожее»** — вставь ссылки на любимые карты, и найдутся карты с похожим профилем.
+- **Коллекции игроков** — тысячи подборок с [osu!Collector](https://osucollector.com), которые игроки
+  назвали «tech», «streams», «aim»…: карты из них идут в кандидаты и получают прибавку к оценке, а для
+  карт-образцов — карты, которые чаще всего лежат с ними в одних подборках.
 - **Турнирные пулы** — 32 000+ карт из 450+ турниров (osu!wiki + Liquipedia): слоты NM2 / HD1 / DT3 /
   TB, звёзды, рейтинг участников (open, 3/4/5/6-digit), уровень турнира и годы.
 - **Фильтры** — звёзды, BPM и длина двусторонними ползунками, жанр, слова в тегах.
@@ -144,7 +160,10 @@ Node.js (в систему ничего не ставится), создаёт �
 ---
 
 <a name="español"></a>
-# osu!trainer — en español
+# osu!drill — en español
+
+*Antes se llamaba osu!trainer; cambió de nombre para no confundirse con
+[osu-trainer de FunOrange](https://github.com/FunOrange/osu-trainer). El repositorio sigue en la misma dirección.*
 
 Elige mapas de osu! para la habilidad que quieres entrenar, mapas parecidos a los que te gustan o mapas
 de mappools reales de torneos, y crea con ellos una colección en **osu!lazer**.
@@ -153,6 +172,9 @@ de mappools reales de torneos, y crea con ellos una colección en **osu!lazer**.
   por etiquetas: cada candidato se descarga y se analiza objeto por objeto (snaps, spacing, cambios de
   ritmo, SV, densidad de notas).
 - **«Quiero algo parecido»** — pega enlaces a mapas que te gusten y encuentra mapas con un perfil similar.
+- **Colecciones de jugadores** — miles de listas de [osu!Collector](https://osucollector.com) que los
+  jugadores llamaron «tech», «streams», «aim»…: sus mapas entran como candidatos y suben de puntuación;
+  con mapas de referencia, también los que más a menudo comparten lista con ellos.
 - **Mappools de torneos** — más de 32 000 mapas de más de 450 torneos (osu!wiki + Liquipedia): slots
   NM2 / HD1 / DT3 / TB, estrellas, rango de los jugadores (open, 3/4/5/6-digit), nivel y años.
 - **Filtros** — estrellas, BPM y duración con deslizadores de dos extremos, género, palabras en etiquetas.

@@ -20,6 +20,6 @@ if errorlevel 1 pause
 exit /b 0
 
 :nopython
-echo Python not found. Install osu!trainer with the one-line command from the README, or install Python 3.9+.
+echo Python not found. Install osu!drill with the one-line command from the README, or install Python 3.9+.
 pause
 exit /b 1

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-osu!trainer - подбор карт по навыку, похожести или турнирным слотам, скачивание и коллекция в osu!lazer.
+osu!drill - подбор карт по навыку, похожести или турнирным слотам, скачивание и коллекция в osu!lazer.
 
 Примеры:
     python trainer.py --skill streams --stars 5.2-6.0 --count 30
@@ -22,6 +22,7 @@ import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import analyze  # noqa: E402
+import collector  # noqa: E402
 import config  # noqa: E402
 import net  # noqa: E402
 import pools  # noqa: E402
@@ -79,7 +80,8 @@ PARAMS = {
     "lang": (str,), "bpm": (str,), "stream_bpm": (str,), "length": (str,), "status": (str,),
     "genres": (str,), "words": (str,),
     "per_tournament": (int, 1, 30), "max_lookups": (int, 50, 5000), "count": (int, 1, 300),
-    "split": (float, 0.1, 5), "like_weight": (float, 0, 1), "min_pc": (int, 0, 10 ** 9),
+    "split": (float, 0.1, 5), "like_weight": (float, 0, 1), "crowd_weight": (float, 0, 1),
+    "min_pc": (int, 0, 10 ** 9),
     "pop_weight": (float, 0, 50), "pool": (int, 20, 1500), "depth": (int, 50, 3000),
     "per_set": (int, 1, 10), "per_set_probe": (int, 1, 10), "min_score": (float, 0, 100),
     "threads": (int, 1, 8),
@@ -201,8 +203,10 @@ def set_passes(s, a):
     return True
 
 
-def gather_online(queries, a, stars, have_md5, log):
-    seen_sets, cands, pages = set(), {}, 0
+def gather_online(queries, a, stars, have_md5, log, seed=()):
+    """Кандидаты с зеркала; seed - уже найденные (из коллекций игроков), зеркало добирает до a.pool."""
+    cands = {c["bid"]: c for c in seed}
+    seen_sets, pages = set(c["sid"] for c in seed), 0
     statuses = [STATUS[s] for s in csv(a.status) if s in STATUS] or [1]
     extra = csv(a.words)[:3]           # слова из фильтра тоже ищем на зеркале
     for status in statuses:
@@ -275,11 +279,58 @@ def gather_local(a, stars, library):
     return out
 
 
-def make_scorer(cfgs, profile, a):
+CROWD_SHARE = 0.5      # до половины кандидатов - из коллекций игроков, остальных ищет зеркало
+
+
+def gather_crowd(index, keys, co, refs, a, stars, have_md5, log):
+    """Кандидаты из коллекций игроков osu!Collector: самые «народные» карты навыка и соседи образцов."""
+    if [g for g in csv(a.genres) if g.isdigit()] or csv(a.words):
+        return []           # жанра и тегов в базе osu!Collector нет - такие фильтры проверит зеркало
+    statuses = set(s for s in csv(a.status) if s in STATUS) or {"ranked"}
+
+    def ok(c):
+        return (stars[0] - 0.02 <= c["sr"] <= stars[1] + 0.02
+                and a.length[0] <= c["length"] <= a.length[1]
+                and a.bpm[0] <= c["bpm"] <= a.bpm[1]
+                and c["status"] in statuses
+                and c["playcount"] >= a.min_pc
+                and not (a.skip_owned and c["md5"] in have_md5))
+
+    tables = [t for t in (co and co["weights"], keys and index.skill_weights(keys)) if t]
+    limit = max(10, int(a.pool * CROWD_SHARE)) // max(len(tables), 1)
+    out, seen = [], set(refs)
+    for table in tables:
+        for c in index.top(table, ok, limit, a.per_set_probe, exclude=seen):
+            seen.add(c["bid"])
+            out.append(c)
+    log(_("  из коллекций игроков (osu!Collector): %d", len(out)))
+    return out
+
+
+def crowd_booster(index, keys, cfgs, co, lang):
+    """Довод коллекций игроков для кандидата: (0..100, пояснение, id подборки) или None."""
+    names = {k: skills.title(cfg, lang) for k, cfg in zip(keys, cfgs)}
+
+    def boost(c):
+        best = None
+        if keys:
+            v, n, skill, cid = index.skill_info(c["bid"], c["sid"], keys)
+            if v > 0:
+                best = (v, _("osu!Collector: подборок «%s»: %d", names[skill], n), cid)
+        if co:
+            v, n, cid = index.cooc_info(co, c["bid"], c["sid"])
+            if v > 0 and (best is None or v > best[0]):
+                best = (v, _("osu!Collector: общих подборок с образцами: %d", n), cid)
+        return best
+
+    return boost
+
+
+def make_scorer(cfgs, profile, a, boost=None):
     sim = skills.profile_scorer(profile) if profile else None
 
-    def scorer(m, playcount):
-        parts, whys = [], []
+    def scorer(m, c):
+        parts, whys, extra = [], [], {}
         if sim:
             s_sim, why = sim(m)
             parts.append((s_sim, a.like_weight))
@@ -290,8 +341,15 @@ def make_scorer(cfgs, profile, a):
             whys.append(best[1])
         total = sum(v * w for v, w in parts) / sum(w for _w, w in parts)
         if a.pop_weight:
-            total += a.pop_weight * skills.sc(math.log10(max(playcount, 1)), 4.0, 6.0)
-        return min(total, 100.0), " | ".join(whys)
+            total += a.pop_weight * skills.sc(math.log10(max(c.get("playcount", 0), 1)), 4.0, 6.0)
+        crowd = boost(c) if boost else None
+        if crowd:
+            # «мягкое ИЛИ»: чем ниже оценка по формуле, тем сильнее её поднимает мнение игроков;
+            # карт, которых нет в коллекциях, это не касается
+            total = 100 - (100 - min(total, 100.0)) * (1 - a.crowd_weight * crowd[0] / 100)
+            whys.append(crowd[1])
+            extra["page"] = collector.page(crowd[2])
+        return min(total, 100.0), " | ".join(whys), extra
 
     return scorer
 
@@ -311,9 +369,13 @@ def score_candidate(c, scorer, a):
         if a.stream_bpm[0] is not None:
             if not (a.stream_bpm[0] <= m["stream_bpm"] <= a.stream_bpm[1]):
                 return None
-        score, why = scorer(m, c.get("playcount", 0))
+        score, why, extra = scorer(m, c)
         out = dict(c)
-        out.update(score=round(score, 1), why=why, metrics=m)
+        if c.get("src") == "collector":         # в базе коллекций названий нет - они есть в самом .osu
+            meta = analyze.metadata(text)
+            out.update(title=meta.get("Title", ""), artist=meta.get("Artist", ""),
+                       mapper=meta.get("Creator", ""), diff=meta.get("Version", ""))
+        out.update(score=round(score, 1), why=why, metrics=m, **extra)
         return out
     except Exception:
         return None
@@ -390,7 +452,9 @@ def select(a, log=print):
     else:
         if not a.skill and not a.like:
             raise RuntimeError(_("Нужен навык, карты-образцы или турнирные слоты"))
-        cfgs = [skills.resolve(x)[1] for x in csv(a.skill)]
+        resolved = [skills.resolve(x) for x in csv(a.skill)]
+        keys = [k for k, _cfg in resolved]
+        cfgs = [cfg for _k, cfg in resolved]
         title = " + ".join(skills.title(c, a.lang) for c in cfgs) if cfgs else _("Похожие")
     name = a.name or ("%s %g-%g*" % (title, stars[0], stars[1]))
     log(_("Задача: %s | звёзды %g-%g | карт: %d", title, stars[0], stars[1], a.count))
@@ -406,7 +470,7 @@ def select(a, log=print):
     if a.tournament:
         picked = pick_tournament(a, stars, log)
     else:
-        profile = None
+        profile, ids, ref_sets = None, [], set()
         if a.like:
             ids = [int(x) for x in csv(str(a.like).replace(" ", ",")) if x.isdigit()][:20]
             log(_("Строю профиль, карт-образцов: %d...", len(ids)))
@@ -416,6 +480,9 @@ def select(a, log=print):
                 m = analyze.metrics(text) if text else None
                 if m:
                     ref_metrics.append(m)
+                    sid = analyze.metadata(text).get("BeatmapSetID", "")
+                    if sid.isdigit():
+                        ref_sets.add(int(sid))
                 else:
                     log(_("  не удалось разобрать карту %s", bid))
             if not ref_metrics:
@@ -424,7 +491,13 @@ def select(a, log=print):
             log(_("  профиль: %.0f BPM, streams %.0f%%, смен ритма %.0f%%, sliders %.0f%%",
                   profile["bpm"], profile["stream_ratio"] * 100,
                   profile["switch_ratio"] * 100, profile["slider_ratio"] * 100))
-        scorer = make_scorer(cfgs, profile, a)
+        index = collector.load() if a.crowd_weight > 0 else None
+        co = index.cooc(ref_sets) if index and ref_sets else None
+        if co is not None and not co["hits"]:
+            log(_("  карт-образцов нет в коллекциях игроков osu!Collector"))
+            co = None
+        boost = crowd_booster(index, keys, cfgs, co, a.lang) if index else None
+        scorer = make_scorer(cfgs, profile, a, boost)
 
         queries = []
         for cfg in cfgs:
@@ -438,13 +511,16 @@ def select(a, log=print):
             cands = gather_local(a, stars, library)
             log(_("  подходящих установленных карт: %d", len(cands)))
         else:
-            cands = gather_online(queries, a, stars, have_md5, log)
+            seed = gather_crowd(index, keys, co, ids, a, stars, have_md5, log) if index else []
+            cands = gather_online(queries, a, stars, have_md5, log, seed)
         if not cands:
             raise RuntimeError(_("Кандидатов не найдено - ослабь фильтры"))
 
         log(_("Анализирую карты: %d...", len(cands)))
         scored, done = [], 0
-        with cf.ThreadPoolExecutor(max_workers=a.threads) as ex:
+        # язык сообщений хранится в потоке - потокам разбора его нужно передать
+        with cf.ThreadPoolExecutor(max_workers=a.threads, initializer=set_lang,
+                                   initargs=(getattr(a, "lang", "en"),)) as ex:
             for res in ex.map(lambda c: score_candidate(c, scorer, a), cands):
                 done += 1
                 if done % 25 == 0:
@@ -556,7 +632,7 @@ def run(a, log=print):
 
 
 def build_parser():
-    p = argparse.ArgumentParser(description="osu!trainer: pick maps and build an osu!lazer collection")
+    p = argparse.ArgumentParser(description="osu!drill: pick maps and build an osu!lazer collection")
     g = p.add_argument_group("what to look for")
     g.add_argument("--skill", help="comma-separated skills: streams, jumps, tech, fingercontrol, ...")
     g.add_argument("--like", help="comma-separated reference difficulty ids (find similar maps)")
@@ -578,6 +654,8 @@ def build_parser():
     g.add_argument("--max-lookups", type=int, default=600, help="how many pool maps to check")
     g = p.add_argument_group("skills")
     g.add_argument("--like-weight", type=float, default=0.7, help="similarity weight (0-1)")
+    g.add_argument("--crowd-weight", type=float, default=0.5,
+                   help="weight of player collections from osu!Collector (0-1, 0 = off)")
     g.add_argument("--min-pc", type=int, default=0, help="minimum playcount of the difficulty")
     g.add_argument("--pop-weight", type=float, default=0.0, help="popularity bonus (0-20)")
     g.add_argument("--stream-bpm", default=None, help="stream BPM, e.g. 180-210")

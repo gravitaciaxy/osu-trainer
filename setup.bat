@@ -2,7 +2,7 @@
 chcp 65001 >nul
 setlocal
 cd /d "%~dp0"
-echo === osu!trainer: installing dependencies ===
+echo === osu!drill: installing dependencies ===
 echo (easiest: the one-line install command from the README downloads everything itself)
 
 set "NPM=npm"

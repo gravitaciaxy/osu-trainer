@@ -1,5 +1,5 @@
 #!/bin/sh
-# Подключение уведомлений обратной связи osu!trainer к Telegram. Запускать на сервере от root,
+# Подключение уведомлений обратной связи osu!drill к Telegram. Запускать на сервере от root,
 # в интерактивном терминале (токен вводится с клавиатуры и не попадает ни в историю, ни в чат).
 # Команда одинаково работает из cmd, PowerShell и bash - без вложенных кавычек и $, которые
 # cmd не понимает, а PowerShell 5.1 теряет при передаче аргументов в ssh:
@@ -14,7 +14,7 @@
 set -eu
 
 ENV_FILE=/etc/osu-trainer.env
-say() { printf "\033[35m[osu!trainer]\033[0m %s\n" "$1"; }
+say() { printf "\033[35m[osu!drill]\033[0m %s\n" "$1"; }
 
 [ "$(id -u)" = 0 ] || { say "Нужен root"; exit 1; }
 command -v curl >/dev/null 2>&1 || { say "Нужен curl"; exit 1; }
@@ -56,6 +56,6 @@ say "Сохранено в $ENV_FILE"
 systemctl restart osu-trainer
 curl -fsS --max-time 20 -X POST "https://api.telegram.org/bot$TOKEN/sendMessage" \
     --data-urlencode "chat_id=$CHAT_ID" \
-    --data-urlencode "text=✅ osu!trainer: сообщения из формы обратной связи будут приходить сюда" >/dev/null \
+    --data-urlencode "text=✅ osu!drill: сообщения из формы обратной связи будут приходить сюда" >/dev/null \
     && say "Готово: тестовое сообщение отправлено в Telegram" \
     || say "Настройки сохранены, но тестовое сообщение не отправилось"

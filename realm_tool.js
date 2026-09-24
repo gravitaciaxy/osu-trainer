@@ -19,7 +19,7 @@ function fileFormat(path) {
   const fmt = fileFormat(realmPath);
   if (fmt !== SUPPORTED_FORMAT) {
     console.error(`UNSUPPORTED_FORMAT ${fmt}: база osu! в формате ${fmt}, инструмент поддерживает ${SUPPORTED_FORMAT}. ` +
-      'Обнови osu!trainer (или osu!lazer) - запись отменена, база не тронута.');
+      'Обнови osu!drill (или osu!lazer) - запись отменена, база не тронута.');
     process.exit(3);
   }
   const readOnly = cmd === 'list' || cmd === 'local';

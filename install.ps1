@@ -1,4 +1,4 @@
-# osu!trainer - one-line installer for Windows (PowerShell):
+# osu!drill - one-line installer for Windows (PowerShell):
 #
 #   irm https://raw.githubusercontent.com/gravitaciaxy/osu-trainer/main/install.ps1 | iex
 #
@@ -22,7 +22,7 @@ $PyVersion = '3.12.10'
 $Tmp = Join-Path ([IO.Path]::GetTempPath()) ('osu-trainer-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $Tmp | Out-Null
 
-function Say($m) { Write-Host "[osu!trainer] $m" -ForegroundColor Magenta }
+function Say($m) { Write-Host "[osu!drill] $m" -ForegroundColor Magenta }
 
 function Get-File($urls, $out) {
     foreach ($u in $urls) {
@@ -65,7 +65,7 @@ try {
     $pyDir = Join-Path $Dir 'runtime\python'
     if (-not (Test-Path (Join-Path $pyDir 'python.exe'))) {
         if ($Force -or -not ((Test-Python 'python' @()) -or (Test-Python 'py' @('-3')))) {
-            Say "Python not found - downloading portable Python $PyVersion (for osu!trainer only)..."
+            Say "Python not found - downloading portable Python $PyVersion (for osu!drill only)..."
             $pz = Join-Path $Tmp 'python.zip'
             Get-File @("https://www.python.org/ftp/python/$PyVersion/python-$PyVersion-embed-amd64.zip") $pz | Out-Null
             Expand-Archive $pz -DestinationPath $pyDir -Force
@@ -74,7 +74,7 @@ try {
 
     $nodeDir = Join-Path $Dir 'runtime\node'
     if (-not (Test-Path (Join-Path $nodeDir 'node.exe')) -and ($Force -or -not (Test-Node))) {
-        Say 'Node.js not found - downloading portable Node.js LTS (for osu!trainer only)...'
+        Say 'Node.js not found - downloading portable Node.js LTS (for osu!drill only)...'
         $index = Invoke-RestMethod 'https://nodejs.org/dist/index.json'
         $lts = $index | Where-Object { $_.lts -and ($_.files -contains 'win-x64-zip') } | Select-Object -First 1
         $name = "node-$($lts.version)-win-x64"
@@ -104,7 +104,10 @@ try {
         $shell = New-Object -ComObject WScript.Shell
         $icon = Join-Path $env:LOCALAPPDATA 'osulazer\current\osu!.exe'
         foreach ($folder in @([Environment]::GetFolderPath('Programs'), [Environment]::GetFolderPath('Desktop'))) {
-            $lnk = $shell.CreateShortcut((Join-Path $folder 'osu!trainer.lnk'))
+            # the app used to be called osu!trainer - drop the old shortcut when updating
+            $old = Join-Path $folder 'osu!trainer.lnk'
+            if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue }
+            $lnk = $shell.CreateShortcut((Join-Path $folder 'osu!drill.lnk'))
             $lnk.TargetPath = Join-Path $Dir 'start.bat'
             $lnk.WorkingDirectory = $Dir
             if (Test-Path $icon) { $lnk.IconLocation = "$icon,0" }
@@ -118,7 +121,7 @@ try {
     }
 }
 catch {
-    Write-Host "[osu!trainer] Installation failed: $($_.Exception.Message)" -ForegroundColor Red
+    Write-Host "[osu!drill] Installation failed: $($_.Exception.Message)" -ForegroundColor Red
 }
 finally {
     Remove-Item $Tmp -Recurse -Force -ErrorAction SilentlyContinue

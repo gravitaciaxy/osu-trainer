@@ -1,7 +1,7 @@
-# systemd-юнит сайта osu!trainer (серверный режим за nginx).
+# systemd-юнит сайта osu!drill (серверный режим за nginx).
 # Установка: см. deploy/README.md
 [Unit]
-Description=osu!trainer website (server mode)
+Description=osu!drill website (server mode)
 After=network-online.target
 Wants=network-online.target
 

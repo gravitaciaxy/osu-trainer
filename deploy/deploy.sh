@@ -1,12 +1,12 @@
 #!/usr/bin/env sh
-# Выкладка сайта osu!trainer на сервер: код -> /opt/osu-trainer, перезапуск юнита, проверка.
+# Выкладка сайта osu!drill на сервер: код -> /opt/osu-trainer, перезапуск юнита, проверка.
 # Запуск из папки проекта:  sh deploy/deploy.sh [ssh-хост]   (по умолчанию: vps)
 set -e
 HOST="${1:-vps}"
 APP=/opt/osu-trainer
 cd "$(dirname "$0")/.."
 
-FILES="analyze.py config.py feedback.py i18n.py liquipedia.py net.py pools.py skills.py trainer.py ui.py index.html data"
+FILES="analyze.py collector.py config.py feedback.py i18n.py liquipedia.py net.py pools.py skills.py trainer.py ui.py index.html data"
 echo "-> копирую код на $HOST:$APP"
 tar czf - $FILES | ssh "$HOST" "set -e
   id osutrainer >/dev/null 2>&1 || useradd --system --home $APP --shell /usr/sbin/nologin osutrainer
