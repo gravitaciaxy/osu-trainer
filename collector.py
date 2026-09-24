@@ -359,6 +359,18 @@ class Index:
                     out[i] = e
         return out
 
+    def niche(self, keys):
+        """Популярность наборов среди любителей навыков: {набор: {подборка: вес}}. Подборка
+        засчитывается набору один раз, сколько бы его сложностей в ней ни лежало."""
+        out = {}
+        for ci, (_cid, fav, n, skills, idx) in enumerate(self.cols):
+            share = sum(skills.get(s, 0.0) for s in keys)
+            if share:
+                w = _weight(fav, n) * share
+                for sid in set(self.maps[i][1] for i in idx):
+                    out.setdefault(sid, {})[ci] = w
+        return out
+
     def cooc(self, ref_sets):
         """Совместная встречаемость с наборами-образцами:
         {'weights': {карта: вес}, 'hits': {подборка: образцов}, 'k': масштаб оценки}."""

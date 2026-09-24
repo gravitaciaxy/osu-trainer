@@ -216,6 +216,34 @@ def search(query, stars, status, offset, limit=50):
     return []
 
 
+def direct_search(filters=(), sort=None, offset=0, status=None, amount=100):
+    """Наборы osu!standard с osu.direct по условиям Meilisearch («beatmaps.bpm 170 TO 200»,
+    «(id = 1 OR id = 2)»), sort - «поле:desc». Список наборов или None, если зеркало не ответило."""
+    params = {"q": "[%s]" % " AND ".join(filters) if filters else "", "amount": amount,
+              "offset": offset, "mode": 0}
+    if sort:
+        params["sort"] = sort
+    if status:
+        params["status"] = status
+    r = get("https://osu.direct/api/v2/search", params=params, timeout=60)
+    try:
+        data = r.json() if r is not None else None
+    except ValueError:
+        return None
+    return data if isinstance(data, list) else None
+
+
+def sets_by_id(ids):
+    """Наборы по номерам, по 100 за запрос: {номер: набор} или None, если зеркало не ответило."""
+    out = {}
+    for k in range(0, len(ids), 100):
+        sets = direct_search(["(%s)" % " OR ".join("id = %d" % i for i in ids[k:k + 100])])
+        if sets is None:
+            return None
+        out.update((s["id"], s) for s in sets)
+    return out
+
+
 def osu_file(beatmap_id, cache_dir):
     """Скачивает .osu (с кэшем на диске)."""
     path = os.path.join(cache_dir, "osu", "%s.osu" % beatmap_id)

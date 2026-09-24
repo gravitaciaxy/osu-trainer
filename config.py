@@ -7,7 +7,7 @@ import platform
 import re
 import shutil
 
-VERSION = "1.1.0"
+VERSION = "1.2.0"
 
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_JSON = os.path.join(TOOL_DIR, "config.json")

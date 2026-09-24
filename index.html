@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>osu!drill</title>
-<meta name="description" content="Pick osu! maps by skill, by similarity to maps you like or from real tournament pools, and get a ready osu!lazer collection">
+<meta name="description" content="Pick osu! maps by skill, by similarity to maps you like, the most popular songs among fans of a skill or real tournament pools, and get a ready osu!lazer collection">
 <style>
   :root{
     --bg:#161214; --panel:#221b1f; --panel2:#2c2328; --line:#3b2f36; --line2:#4a3b44;
@@ -217,6 +217,7 @@
     <div class="card">
       <div class="tabs">
         <button id="tab-skill" class="on" onclick="setMode('skill')" data-i18n="tab_skill"></button>
+        <button id="tab-pop" onclick="setMode('pop')" data-i18n="tab_pop"></button>
         <button id="tab-tour" onclick="setMode('tour')" data-i18n="tab_tour"></button>
       </div>
 
@@ -266,6 +267,19 @@
             <label class="flag"><input type="checkbox" id="skip_owned"><span data-i18n="skip_owned"></span><span class="help" tabindex="0" data-tip-key="tip_skip_owned">?</span></label>
           </div>
         </details>
+      </section>
+
+      <!-- ПОПУЛЯРНЫЕ -->
+      <section id="pane-pop" hidden>
+        <div class="lbl"><span data-i18n="pop_fans"></span><span class="help" tabindex="0" data-tip-key="tip_pop_fans">?</span></div>
+        <div class="chips" id="pskills"></div>
+
+        <div class="lbl"><span data-i18n="status"></span><span class="help" tabindex="0" data-tip-key="tip_status">?</span></div>
+        <div class="chips" id="pstatus"></div>
+
+        <div class="flags localonly">
+          <label class="flag"><input type="checkbox" id="pop_skip_owned"><span data-i18n="skip_owned"></span><span class="help" tabindex="0" data-tip-key="tip_skip_owned">?</span></label>
+        </div>
       </section>
 
       <!-- ТУРНИРЫ -->
@@ -459,8 +473,8 @@
    в русской версии остаются по-английски; всё остальное - обычным русским языком. */
 const T = {
 ru: {
-  settings:'Настройки', open_settings:'Открыть настройки', tab_skill:'Навыки', tab_tour:'Турнирные пулы',
-  skills:'Навыки', like:'Карты-образцы — «хочу похожее»',
+  settings:'Настройки', open_settings:'Открыть настройки', tab_skill:'Навыки', tab_tour:'Турнирные пулы', tab_pop:'Популярные',
+  skills:'Навыки', pop_fans:'Среди любителей', like:'Карты-образцы — «хочу похожее»',
   like_ph:'ссылки на карты или номера сложностей, например\nhttps://osu.ppy.sh/beatmapsets/1231048#osu/2591748',
   like_weight:'Вес похожести', min_pc:'Мин. число игр', pop_weight:'Бонус за популярность', crowd_weight:'Коллекции игроков',
   stream_bpm:'BPM streams', status:'Статус карт', advanced:'Дополнительно',
@@ -510,6 +524,7 @@ ru: {
   footer:'Турнирные пулы: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) и <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Подборки игроков: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Карты: osu.ppy.sh, osu.direct, catboy.best. Проект не связан с ppy Pty Ltd.',
 
   tip_skills:'Какой навык тренировать. Можно выбрать несколько — карта оценивается по лучшему из них. Наведи на навык, чтобы увидеть, что именно он измеряет.',
+  tip_pop_fans:'Самые популярные песни среди игроков, которые любят этот навык: во сколько подборок «tech», «streams», «aim»… на osu!Collector их положили (подборки, которые многие добавили в избранное, весят больше). Сверху — классика жанра, разные мапсеты одной песни считаются вместе. Можно выбрать несколько навыков. Ничего не выбрано — самые играемые карты osu! вообще; сузить их можно жанром и словами в тегах (touhou, vocaloid…). Карты не разбираются, поэтому подбор занимает секунды.',
   tip_like:'Вставь ссылки на карты, которые нравятся (или номера сложностей). Их ритм, плотность, spacing и sliders разбираются, и находятся похожие карты. Можно без выбора навыков.',
   tip_like_weight:'Насколько сильно учитывать похожесть на карты-образцы, от 0 до 1. 0.7 — это 70% похожесть и 30% выбранный навык.',
   tip_min_pc:'Отсекает малоизвестные карты: минимальное число игр у сложности. От 80 000 — популярные карты.',
@@ -563,9 +578,9 @@ ru: {
   fb_error:'Не получилось отправить. Попробуй позже или напиши на GitHub.', fb_github:'Или создай issue на GitHub',
   changes:'Что нового', changes_title:'Что нового в osu!drill',
   guide:'Инструкция', how_it_works:'Как это работает', guide_title:'Как пользоваться osu!drill',
-  guide_html:'<p>osu!drill подбирает карты osu! под навык, который хочешь тренировать, карты, похожие на твои любимые, или карты из настоящих турнирных пулов, и превращает их в коллекцию в <b>osu!lazer</b>.</p>' +
+  guide_html:'<p>osu!drill подбирает карты osu! под навык, который хочешь тренировать, карты, похожие на твои любимые, самые популярные песни среди любителей навыка или карты из настоящих турнирных пулов, и превращает их в коллекцию в <b>osu!lazer</b>.</p>' +
     '<h4>1. Подбор</h4><ol>' +
-    '<li>Выбери вкладку: <b>Навыки</b> (Streams, Jumps, Tech, Finger control…) или <b>Турнирные пулы</b> (NM2, HD1, DT3… из 450+ турниров).</li>' +
+    '<li>Выбери вкладку: <b>Навыки</b> (Streams, Jumps, Tech, Finger control…), <b>Популярные</b> (самые популярные песни среди любителей tech, streams… или самые играемые карты вообще) или <b>Турнирные пулы</b> (NM2, HD1, DT3… из 450+ турниров).</li>' +
     '<li>Настрой фильтры. У каждого есть <b>?</b> с объяснением; звёзды, BPM и длина — двусторонние ползунки.</li>' +
     '<li>Нажми <b>Подобрать карты</b> на сайте или <b>Собрать коллекцию</b> / <b>Только показать</b> в программе. В таблице видно, почему выбрана каждая карта.</li></ol>' +
     '<h4>2. В игру</h4>' +
@@ -585,8 +600,8 @@ ru: {
     '<li>Открытый код (MIT): <a href="{repo}" target="_blank" rel="noopener">GitHub</a>.</li></ul>'
 },
 en: {
-  settings:'Settings', open_settings:'Open settings', tab_skill:'Skills', tab_tour:'Tournament pools',
-  skills:'Skills', like:'Reference maps — "more like these"',
+  settings:'Settings', open_settings:'Open settings', tab_skill:'Skills', tab_tour:'Tournament pools', tab_pop:'Popular',
+  skills:'Skills', pop_fans:'Among fans of', like:'Reference maps — "more like these"',
   like_ph:'map links or difficulty ids, e.g.\nhttps://osu.ppy.sh/beatmapsets/1231048#osu/2591748',
   like_weight:'Similarity weight', min_pc:'Min. playcount', pop_weight:'Popularity bonus', crowd_weight:'Player collections',
   stream_bpm:'Stream BPM', status:'Map status', advanced:'Advanced',
@@ -636,6 +651,7 @@ en: {
   footer:'Tournament pools: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) and <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Player collections: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Maps: osu.ppy.sh, osu.direct, catboy.best. Not affiliated with ppy Pty Ltd.',
 
   tip_skills:'Which skill to train. You can pick several — a map is scored by the best of them. Hover a skill to see what it measures.',
+  tip_pop_fans:'The most popular songs among players who love this skill: how many osu!Collector collections named "tech", "streams", "aim"… include them (collections many people favourited weigh more). The classics of the scene come first; different mapsets of the same song count together. You can pick several skills. Nothing selected — the most played osu! maps overall; narrow them down by genre or words in tags (touhou, vocaloid…). Maps are not analysed, so it takes seconds.',
   tip_like:'Paste links to maps you like (or difficulty ids). Their rhythm, density, spacing and sliders are analysed and similar maps are found. Works without picking skills.',
   tip_like_weight:'How much similarity to the reference maps matters, from 0 to 1. 0.7 = 70% similarity + 30% selected skill.',
   tip_min_pc:'Filters out obscure maps: minimum plays of the difficulty. 80,000+ means popular maps.',
@@ -689,9 +705,9 @@ en: {
   fb_error:'Couldn’t send the message. Try again later or open an issue on GitHub.', fb_github:'Or open an issue on GitHub',
   changes:"What's new", changes_title:"What's new in osu!drill",
   guide:'Guide', how_it_works:'How it works', guide_title:'How to use osu!drill',
-  guide_html:'<p>osu!drill picks osu! maps for the skill you want to practise, maps similar to ones you like, or maps from real tournament pools, and turns them into a collection in <b>osu!lazer</b>.</p>' +
+  guide_html:'<p>osu!drill picks osu! maps for the skill you want to practise, maps similar to ones you like, the most popular songs among fans of a skill, or maps from real tournament pools, and turns them into a collection in <b>osu!lazer</b>.</p>' +
     '<h4>1. Pick maps</h4><ol>' +
-    '<li>Choose a tab: <b>Skills</b> (Streams, Jumps, Tech, Finger control…) or <b>Tournament pools</b> (NM2, HD1, DT3… from 450+ tournaments).</li>' +
+    '<li>Choose a tab: <b>Skills</b> (Streams, Jumps, Tech, Finger control…), <b>Popular</b> (the most popular songs among fans of tech, streams… or the most played maps overall) or <b>Tournament pools</b> (NM2, HD1, DT3… from 450+ tournaments).</li>' +
     '<li>Set the filters. Every filter has a <b>?</b> with an explanation; stars, BPM and length are two-handle sliders.</li>' +
     '<li>Press <b>Find maps</b> on the website, or <b>Build collection</b> / <b>Preview only</b> in the desktop app. The table shows why each map was picked.</li></ol>' +
     '<h4>2. Get them into osu!</h4>' +
@@ -711,8 +727,8 @@ en: {
     '<li>Open source (MIT): <a href="{repo}" target="_blank" rel="noopener">GitHub</a>.</li></ul>'
 },
 es: {
-  settings:'Ajustes', open_settings:'Abrir ajustes', tab_skill:'Habilidades', tab_tour:'Mappools de torneos',
-  skills:'Habilidades', like:'Mapas de referencia: «quiero algo parecido»',
+  settings:'Ajustes', open_settings:'Abrir ajustes', tab_skill:'Habilidades', tab_tour:'Mappools de torneos', tab_pop:'Populares',
+  skills:'Habilidades', pop_fans:'Entre fans de', like:'Mapas de referencia: «quiero algo parecido»',
   like_ph:'enlaces a mapas o IDs de dificultades, por ejemplo\nhttps://osu.ppy.sh/beatmapsets/1231048#osu/2591748',
   like_weight:'Peso de la similitud', min_pc:'Mín. de partidas', pop_weight:'Bonus por popularidad', crowd_weight:'Colecciones de jugadores',
   stream_bpm:'BPM de streams', status:'Estado del mapa', advanced:'Avanzado',
@@ -762,6 +778,7 @@ es: {
   footer:'Mappools de torneos: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) y <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Colecciones de jugadores: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Mapas: osu.ppy.sh, osu.direct, catboy.best. Proyecto no afiliado a ppy Pty Ltd.',
 
   tip_skills:'Qué habilidad entrenar. Puedes elegir varias: cada mapa se puntúa por la mejor de ellas. Pasa el cursor por una habilidad para ver qué mide.',
+  tip_pop_fans:'Las canciones más populares entre quienes disfrutan esta habilidad: en cuántas colecciones «tech», «streams», «aim»… de osu!Collector aparecen (las colecciones que mucha gente marcó como favoritas pesan más). Primero salen los clásicos de la escena; los distintos mapsets de una misma canción cuentan juntos. Puedes elegir varias habilidades. Sin selección: los mapas de osu! más jugados en general; puedes acotarlos por género o por palabras en las etiquetas (touhou, vocaloid…). Los mapas no se analizan, así que tarda unos segundos.',
   tip_like:'Pega enlaces a mapas que te gusten (o IDs de dificultades). Se analizan su ritmo, densidad, spacing y sliders, y se buscan mapas parecidos. Funciona sin elegir habilidades.',
   tip_like_weight:'Cuánto importa el parecido con los mapas de referencia, de 0 a 1. 0.7 = 70 % parecido y 30 % la habilidad elegida.',
   tip_min_pc:'Descarta mapas poco conocidos: mínimo de partidas de la dificultad. Desde 80 000, mapas populares.',
@@ -815,9 +832,9 @@ es: {
   fb_error:'No se pudo enviar. Inténtalo más tarde o abre un issue en GitHub.', fb_github:'O abre un issue en GitHub',
   changes:'Novedades', changes_title:'Novedades de osu!drill',
   guide:'Guía', how_it_works:'Cómo funciona', guide_title:'Cómo usar osu!drill',
-  guide_html:'<p>osu!drill elige mapas de osu! para la habilidad que quieres entrenar, mapas parecidos a los que te gustan o mapas de mappools reales de torneos, y los convierte en una colección de <b>osu!lazer</b>.</p>' +
+  guide_html:'<p>osu!drill elige mapas de osu! para la habilidad que quieres entrenar, mapas parecidos a los que te gustan, las canciones más populares entre los fans de una habilidad o mapas de mappools reales de torneos, y los convierte en una colección de <b>osu!lazer</b>.</p>' +
     '<h4>1. Elegir mapas</h4><ol>' +
-    '<li>Elige una pestaña: <b>Habilidades</b> (Streams, Jumps, Tech, Finger control…) o <b>Mappools de torneos</b> (NM2, HD1, DT3… de más de 450 torneos).</li>' +
+    '<li>Elige una pestaña: <b>Habilidades</b> (Streams, Jumps, Tech, Finger control…), <b>Populares</b> (las canciones más populares entre los fans de tech, streams… o los mapas más jugados en general) o <b>Mappools de torneos</b> (NM2, HD1, DT3… de más de 450 torneos).</li>' +
     '<li>Ajusta los filtros. Cada filtro tiene un <b>?</b> con su explicación; estrellas, BPM y duración son deslizadores de dos extremos.</li>' +
     '<li>Pulsa <b>Buscar mapas</b> en la web, o <b>Crear colección</b> / <b>Solo mostrar</b> en la aplicación. La tabla muestra por qué se eligió cada mapa.</li></ol>' +
     '<h4>2. Llevarlos a osu!</h4>' +
@@ -842,8 +859,8 @@ es: {
 let LANG = 'en', MODE = 'skill',   /* английский по умолчанию; выбор языка запоминается */ DATA = null, JOB = null, SEEN = 0, TIMER = null, LASTRESULT = null, SITE = false;
 let IMPORT = null;
 const LOCAL_APP = 'http://127.0.0.1:8730';
-const picked = { skills:new Set(['fingercontrol']), status:new Set(['ranked']), slots:new Set(), digits:new Set(),
-                 tiers:new Set(), sources:new Set(), genres:new Set(), tours:[] };
+const picked = { skills:new Set(['fingercontrol']), status:new Set(['ranked']), pstatus:new Set(['ranked','loved']),
+                 slots:new Set(), digits:new Set(), tiers:new Set(), sources:new Set(), genres:new Set(), tours:[] };
 const $ = id => document.getElementById(id);
 const t = (k, vars) => { let s = (T[LANG] && T[LANG][k]) || T.ru[k] || k;
   if (vars) for (const [a, b] of Object.entries(vars)) s = s.split('{' + a + '}').join(b); return s; };
@@ -859,7 +876,7 @@ function mapsText(n){
 }
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const FIELDS = ['like','like_weight','min_pc','pop_weight','crowd_weight','pool','depth','per_set','min_score','threads','local_only',
-  'skip_owned','per_tournament','max_lookups','count','name','split','no_download','no_collection','words'];
+  'skip_owned','pop_skip_owned','per_tournament','max_lookups','count','name','split','no_download','no_collection','words'];
 const RANGES = ['r_stars','r_bpm','r_length','r_stream','r_years'];
 
 function store(){ try{ localStorage.setItem('osu-trainer', JSON.stringify({
@@ -990,8 +1007,10 @@ function render(){
   $('info').textContent = SITE ? (pool ? t('info_site', {m:mapsText(pool.entries), e:pool.editions}) : '')
     : pool ? t('info', {c:d.collections.length, m:mapsText(pool.entries)}) : t('info_nopool', {c:d.collections.length});
 
-  chips($('skills'), d.skills.map(s => ({ key:s.key, label:L(s, 'title'), tip:L(s, 'desc') })), picked.skills);
-  chips($('status'), ['ranked','loved','approved','qualified'].map(s => ({key:s, label:s})), picked.status);
+  renderSkills();
+  const statuses = ['ranked','loved','approved','qualified'].map(s => ({key:s, label:s}));
+  chips($('status'), statuses, picked.status);
+  chips($('pstatus'), statuses, picked.pstatus);
   chips($('genres'), d.genres.map(g => ({ key:String(g.id), label:g[LANG] || g.en })), picked.genres);
 
   const g = $('slots'); g.innerHTML = '';
@@ -1023,6 +1042,12 @@ function render(){
   if (!SITE) { renderCollections(); renderEnv(); }
   if (LASTRESULT) showResults(LASTRESULT);
   updateButtons();
+}
+
+/* навыки общие для вкладок «Навыки» и «Популярные» - перерисовываются при переключении */
+function renderSkills(){
+  const items = DATA.skills.map(s => ({ key:s.key, label:L(s, 'title'), tip:L(s, 'desc') }));
+  ['skills','pskills'].forEach(id => chips($(id), items, picked.skills));
 }
 
 function renderTours(){
@@ -1099,8 +1124,9 @@ function updateButtons(){
 /* ============================== запуск ============================== */
 function setMode(m){
   MODE = m; hideTip();
-  $('tab-skill').classList.toggle('on', m === 'skill'); $('tab-tour').classList.toggle('on', m === 'tour');
-  $('pane-skill').hidden = m !== 'skill'; $('pane-tour').hidden = m !== 'tour'; store();
+  ['skill','pop','tour'].forEach(k => { $('tab-' + k).classList.toggle('on', m === k); $('pane-' + k).hidden = m !== k; });
+  if (DATA) renderSkills();
+  store();
 }
 /* номера сложностей из ссылок (…#osu/123, /b/123, /beatmaps/123) и просто чисел; номер набора не нужен */
 function ids(text){
@@ -1122,6 +1148,10 @@ function params(dry){
     Object.assign(p, { tournament:[...picked.slots].join(','), years:rangeParam('r_years', 2000, 2100),
       tours:picked.tours.join(','), digits:[...picked.digits].join(','), tiers:[...picked.tiers].join(','),
       sources:[...picked.sources].join(','), per_tournament:num('per_tournament'), max_lookups:num('max_lookups') });
+  } else if (MODE === 'pop'){
+    /* навык не выбран - самые играемые карты вообще */
+    Object.assign(p, { popular:true, skill:[...picked.skills].join(','),
+      status:[...picked.pstatus].join(',') || 'ranked,loved', skip_owned:$('pop_skip_owned').checked });
   } else {
     const like = ids($('like').value);
     if (!picked.skills.size && !like){ alert(t('need_skill')); return null; }
@@ -1300,6 +1330,13 @@ async function sendFeedback(){
    Новые записи - сверху, id - дата выкладки. При первом заходе список не показывается,
    при следующих - только то, чего человек ещё не видел. Кнопка в шапке показывает всё. */
 const CHANGES = [
+  { id:'2026-09-25', v:'1.2.0',
+    ru:['Новая вкладка «Популярные»: самые популярные песни среди любителей навыка. Выбираешь tech — получаешь карты, которые tech-игроки чаще всего кладут в свои подборки на osu!Collector (Hype, KEMOMIMI EDM SQUAD, KillerBeast, Nexta…). Разные мапсеты одной песни считаются вместе.',
+        'Без навыка вкладка покажет самые играемые карты osu! в выбранных звёздах; сузить их можно жанром и словами в тегах (touhou, vocaloid…). Карты не разбираются, поэтому подборка готова за пару секунд.'],
+    en:['New "Popular" tab: the most popular songs among fans of a skill. Pick tech and get the maps tech players put into their osu!Collector collections most often (Hype, KEMOMIMI EDM SQUAD, KillerBeast, Nexta…). Different mapsets of the same song count together.',
+        'With no skill picked, the tab shows the most played osu! maps in your star range; narrow them down by genre or words in tags (touhou, vocaloid…). Maps are not analysed, so the selection is ready in a couple of seconds.'],
+    es:['Nueva pestaña «Populares»: las canciones más populares entre los fans de una habilidad. Elige tech y obtén los mapas que los jugadores de tech más ponen en sus colecciones de osu!Collector (Hype, KEMOMIMI EDM SQUAD, KillerBeast, Nexta…). Los distintos mapsets de una misma canción cuentan juntos.',
+        'Sin habilidad, la pestaña muestra los mapas de osu! más jugados en tu rango de estrellas; puedes acotarlos por género o por palabras en las etiquetas (touhou, vocaloid…). Los mapas no se analizan, así que la selección está lista en un par de segundos.'] },
   { id:'2026-09-24', v:'1.1.0',
     ru:['osu!trainer теперь называется osu!drill — чтобы не путать с osu-trainer от FunOrange. Адрес сайта, программа и команды установки прежние.',
         'Коллекции игроков: тысячи подборок с osu!Collector, которые игроки назвали «tech», «streams», «aim»… Карты из них идут в кандидаты и получают прибавку к оценке, а для карт-образцов предлагаются карты из тех же подборок. Вес — в поле «Коллекции игроков».',

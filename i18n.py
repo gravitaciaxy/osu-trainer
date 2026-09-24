@@ -85,6 +85,15 @@ EN = {
         "  the reference maps are not in any osu!Collector player collection",
     "osu!Collector: подборок «%s»: %d": "osu!Collector: \"%s\" collections: %d",
     "osu!Collector: общих подборок с образцами: %d": "osu!Collector: collections shared with the reference maps: %d",
+    "Популярные": "Popular",
+    "Самые популярные песни среди любителей %s - по коллекциям игроков osu!Collector...":
+        "The most popular songs among %s fans - by osu!Collector player collections...",
+    "Самые играемые карты osu! - по данным osu.direct...": "The most played osu! maps - data from osu.direct...",
+    "  просмотрено наборов: %d, песен: %d": "  sets checked: %d, songs: %d",
+    "Зеркало osu.direct не отвечает - попробуй позже": "The osu.direct mirror is not responding - try again later",
+    "Нет базы коллекций игроков osu!Collector: python collector.py build":
+        "The osu!Collector player collection database is missing: python collector.py build",
+    "игр на osu!: %s": "plays on osu!: %s",
 }
 
 ES = {
@@ -159,6 +168,15 @@ ES = {
         "  los mapas de referencia no están en ninguna colección de jugadores de osu!Collector",
     "osu!Collector: подборок «%s»: %d": "osu!Collector: colecciones «%s»: %d",
     "osu!Collector: общих подборок с образцами: %d": "osu!Collector: colecciones compartidas con los mapas de referencia: %d",
+    "Популярные": "Populares",
+    "Самые популярные песни среди любителей %s - по коллекциям игроков osu!Collector...":
+        "Las canciones más populares entre los fans de %s, según las colecciones de jugadores de osu!Collector...",
+    "Самые играемые карты osu! - по данным osu.direct...": "Los mapas de osu! más jugados, según osu.direct...",
+    "  просмотрено наборов: %d, песен: %d": "  beatmapsets revisados: %d, canciones: %d",
+    "Зеркало osu.direct не отвечает - попробуй позже": "El mirror osu.direct no responde: inténtalo más tarde",
+    "Нет базы коллекций игроков osu!Collector: python collector.py build":
+        "Falta la base de colecciones de jugadores de osu!Collector: python collector.py build",
+    "игр на osu!: %s": "partidas en osu!: %s",
 }
 
 TRANSLATIONS = {"en": EN, "es": ES}
@@ -180,6 +198,12 @@ def get_lang():
 def pick(lang, ru, en, es):
     """Выбор одной из трёх готовых строк по языку (для коротких подписей вне словарей)."""
     return {"ru": ru, "es": es}.get(normalize(lang), en)
+
+
+def number(n):
+    """Число с разделителями разрядов текущего языка: 1,234,567 / 1 234 567 / 1.234.567."""
+    s = format(int(n), ",")
+    return {"ru": s.replace(",", " "), "es": s.replace(",", ".")}.get(get_lang(), s)
 
 
 def _(text, *args):

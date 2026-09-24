@@ -7,13 +7,16 @@ osu!drill - подбор карт по навыку, похожести или �
     python trainer.py --skill fingercontrol,tech --like "2591748,2823535" --stars 4.8-6 --count 40
     python trainer.py --tournament NM2,NM3,NM4 --stars 6.0-6.6 --count 40 --digits 5,6
     python trainer.py --skill jumps --stars 5-6 --genres 10,11 --words "speedcore,dnb"
+    python trainer.py --popular --skill tech --stars 5-7 --count 40
 """
 import argparse
 import concurrent.futures as cf
+import itertools
 import json
 import math
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -27,7 +30,7 @@ import config  # noqa: E402
 import net  # noqa: E402
 import pools  # noqa: E402
 import skills  # noqa: E402
-from i18n import _, set_lang  # noqa: E402
+from i18n import _, number, set_lang  # noqa: E402
 
 try:
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -86,7 +89,7 @@ PARAMS = {
     "per_set": (int, 1, 10), "per_set_probe": (int, 1, 10), "min_score": (float, 0, 100),
     "threads": (int, 1, 8),
     "dry_run": (bool,), "no_download": (bool,), "no_collection": (bool,),
-    "local_only": (bool,), "skip_owned": (bool,),
+    "local_only": (bool,), "skip_owned": (bool,), "popular": (bool,),
 }
 SERVER_LIMITS = {"count": 100, "pool": 400, "depth": 400, "max_lookups": 900, "threads": 4}
 
@@ -203,6 +206,28 @@ def set_passes(s, a):
     return True
 
 
+def mirror_cand(s, b):
+    """Кандидат из набора s и его сложности b в формате osu!api v2 (так отвечают зеркала)."""
+    return dict(bid=b["id"], sid=s["id"], md5=b["checksum"], sr=b["difficulty_rating"], diff=b["version"],
+                title=s["title"], artist=s["artist"], mapper=s.get("creator", ""),
+                bpm=b.get("bpm") or s.get("bpm") or 0, length=b["total_length"],
+                status=s.get("status", ""), playcount=b.get("playcount", 0),
+                genre=s.get("genre_id") or 0, local=False, slot="")
+
+
+def map_filter(a, stars, statuses, have_md5, installed_only=False):
+    """Проверка карты по данным базы или зеркала: звёзды, длина, BPM, статус, число игр, есть ли в игре."""
+    def ok(c):
+        return (stars[0] - 0.02 <= c["sr"] <= stars[1] + 0.02
+                and a.length[0] <= c["length"] <= a.length[1]
+                and a.bpm[0] <= c["bpm"] <= a.bpm[1]
+                and c["status"] in statuses
+                and c["playcount"] >= a.min_pc
+                and not (a.skip_owned and c["md5"] in have_md5)
+                and (not installed_only or c["md5"] in have_md5))
+    return ok
+
+
 def gather_online(queries, a, stars, have_md5, log, seed=()):
     """Кандидаты с зеркала; seed - уже найденные (из коллекций игроков), зеркало добирает до a.pool."""
     cands = {c["bid"]: c for c in seed}
@@ -241,13 +266,7 @@ def gather_online(queries, a, stars, have_md5, log, seed=()):
                             continue
                         if b.get("playcount", 0) < a.min_pc:
                             continue
-                        cands[b["id"]] = dict(
-                            bid=b["id"], sid=s["id"], md5=b["checksum"],
-                            sr=b["difficulty_rating"], diff=b["version"],
-                            title=s["title"], artist=s["artist"], mapper=s.get("creator", ""),
-                            bpm=b.get("bpm") or s.get("bpm"), length=b["total_length"],
-                            status=s.get("status", ""), playcount=b.get("playcount", 0),
-                            genre=s.get("genre_id") or 0, local=False, slot="")
+                        cands[b["id"]] = mirror_cand(s, b)
                 offset += 50
             if len(cands) >= a.pool:
                 break
@@ -286,16 +305,7 @@ def gather_crowd(index, keys, co, refs, a, stars, have_md5, log):
     """Кандидаты из коллекций игроков osu!Collector: самые «народные» карты навыка и соседи образцов."""
     if [g for g in csv(a.genres) if g.isdigit()] or csv(a.words):
         return []           # жанра и тегов в базе osu!Collector нет - такие фильтры проверит зеркало
-    statuses = set(s for s in csv(a.status) if s in STATUS) or {"ranked"}
-
-    def ok(c):
-        return (stars[0] - 0.02 <= c["sr"] <= stars[1] + 0.02
-                and a.length[0] <= c["length"] <= a.length[1]
-                and a.bpm[0] <= c["bpm"] <= a.bpm[1]
-                and c["status"] in statuses
-                and c["playcount"] >= a.min_pc
-                and not (a.skip_owned and c["md5"] in have_md5))
-
+    ok = map_filter(a, stars, set(s for s in csv(a.status) if s in STATUS) or {"ranked"}, have_md5)
     tables = [t for t in (co and co["weights"], keys and index.skill_weights(keys)) if t]
     limit = max(10, int(a.pool * CROWD_SHARE)) // max(len(tables), 1)
     out, seen = [], set(refs)
@@ -429,6 +439,147 @@ def pick_tournament(a, stars, log):
     return out
 
 
+# ------------------------------------------------------ популярные песни ----
+
+POPULAR_PAGES = 10          # не больше стольких запросов к зеркалу по 100 наборов
+# звёзды в базе osu!Collector - с её сборки, а пересчёты рейтинга сдвигают их на десятые (у 99% карт
+# меньше чем на 0.6): по базе карты отбираются с таким запасом, точно - по свежим данным зеркала
+SR_DRIFT = 0.6
+
+
+def _norm(text):
+    return re.sub(r"\W+", "", (text or "").lower())
+
+
+def song_key(s):
+    """Песня набора: исполнитель и название без приписок в скобках - (TV Size), [Cut Ver.], (lapix Remix),
+    чтобы разные наборы одной песни не повторялись в подборке."""
+    title = s.get("title") or ""
+    short = re.sub(r"(\s*[(\[][^()\[\]]*[)\]])+\s*$", "", title)
+    return _norm(s.get("artist")), _norm(short) or _norm(title)
+
+
+def popular_crowd(a, keys, cfgs, rough, ok, log):
+    """Песни, которые любители навыков чаще всего кладут в свои подборки на osu!Collector.
+    Наборы одной песни складываются, подборка считается один раз; из песни берутся сложности,
+    которые эти игроки собирают чаще всего. rough - фильтр по данным базы, ok - по свежим."""
+    index = collector.load()
+    if not index:
+        raise RuntimeError(_("Нет базы коллекций игроков osu!Collector: python collector.py build"))
+    names = " + ".join(skills.title(c, a.lang) for c in cfgs)
+    log(_("Самые популярные песни среди любителей %s - по коллекциям игроков osu!Collector...", names))
+    sets = index.niche(keys)
+
+    def collected():
+        """Наборы по убыванию популярности с собранными сложностями под фильтры: (набор, {сложность: вес})."""
+        for sid in sorted(sets, key=lambda k: -sum(sets[k].values())):
+            bids = {}
+            for i in index.by_set.get(sid, ()):
+                w = sum(index.ev.get(s, {}).get(i, 0.0) for s in keys)
+                if w > 0 and rough(index.candidate(i)):
+                    bids[index.maps[i][0]] = w
+            if bids:
+                yield sid, bids
+
+    songs, looked, queue = {}, 0, collected()
+    for _n in range(POPULAR_PAGES):
+        chunk = list(itertools.islice(queue, 100))
+        if not chunk:
+            break
+        info = net.sets_by_id([sid for sid, _b in chunk])
+        if info is None:
+            raise RuntimeError(_("Зеркало osu.direct не отвечает - попробуй позже"))
+        looked += len(chunk)
+        for sid, bids in chunk:
+            s = info.get(sid)
+            if not s or not set_passes(s, a):
+                continue
+            song = songs.setdefault(song_key(s), dict(cols={}, maps=[]))
+            song["cols"].update(sets[sid])
+            for b in s.get("beatmaps", []):
+                if b.get("id") not in bids:
+                    continue
+                c = mirror_cand(s, b)           # звёзды, md5 и статус - свежие, с зеркала
+                if ok(c):
+                    c["niche"] = bids[b["id"]]
+                    song["maps"].append(c)
+        # запас по наборам: другой набор той же песни может стоять ниже и добавить ей подборок
+        if sum(1 for g in songs.values() if g["maps"]) >= a.count and looked >= 2 * a.count + 20:
+            break
+    songs = sorted((g for g in songs.values() if g["maps"]), key=lambda g: -sum(g["cols"].values()))
+    log(_("  просмотрено наборов: %d, песен: %d", looked, len(songs)))
+    for g in songs:
+        why = _("osu!Collector: подборок «%s»: %d", names, len(g["cols"]))
+        page = collector.page(index.cols[max(g["cols"], key=g["cols"].get)][0])
+        g["maps"].sort(key=lambda c: -c["niche"])
+        for c in g["maps"]:
+            c.update(why=why, page=page)
+    return [g["maps"] for g in songs]
+
+
+def popular_plays(a, stars, statuses, ok, log):
+    """Самые играемые карты: наборы с osu.direct по убыванию игр их самой играемой сложности.
+    Ни одна сложность набора не сыграна больше этого числа, поэтому, как только оно у очередного
+    набора меньше, чем у последней нужной песни, подборка точная и дальше искать незачем."""
+    log(_("Самые играемые карты osu! - по данным osu.direct..."))
+    filters = ["beatmaps.difficulty_rating %g TO %g" % (max(stars[0] - 0.02, 0), stars[1] + 0.02)]
+    if a.bpm != (0, 10000):
+        filters.append("beatmaps.bpm %g TO %g" % a.bpm)
+    if a.length != (0, 100000):
+        filters.append("beatmaps.total_length %g TO %g" % a.length)
+    genres = [int(g) for g in csv(a.genres) if g.isdigit()]
+    if genres:
+        filters.append("(%s)" % " OR ".join("genre_id = %d" % g for g in genres))
+    status = ",".join(str(STATUS[s]) for s in sorted(statuses))
+    songs, looked = {}, 0
+    for page in range(POPULAR_PAGES):
+        sets = net.direct_search(filters, "beatmaps.playcount:desc", page * 100, status)
+        if sets is None:
+            if not page:
+                raise RuntimeError(_("Зеркало osu.direct не отвечает - попробуй позже"))
+            break
+        looked += len(sets)
+        for s in sets:
+            if not set_passes(s, a):          # слова в тегах зеркало так не ищет - проверяем сами
+                continue
+            maps = [c for c in (mirror_cand(s, b) for b in s.get("beatmaps", []) if b.get("mode_int") == 0)
+                    if ok(c)]
+            if maps:
+                songs.setdefault(song_key(s), []).extend(maps)
+        if len(sets) < 100:
+            break
+        edge = max((b.get("playcount", 0) for b in sets[-1].get("beatmaps", [])), default=0)
+        best = sorted((max(c["playcount"] for c in g) for g in songs.values()), reverse=True)
+        if len(best) >= a.count and best[a.count - 1] >= edge:
+            break
+    log(_("  просмотрено наборов: %d, песен: %d", looked, len(songs)))
+    out = sorted(songs.values(), key=lambda g: -max(c["playcount"] for c in g))
+    for g in out:
+        g.sort(key=lambda c: -c["playcount"])
+        for c in g:
+            c["why"] = _("игр на osu!: %s", number(c["playcount"]))
+    return out
+
+
+def pick_popular(a, stars, keys, cfgs, have_md5, log):
+    """Самые популярные песни: среди любителей навыков (коллекции игроков) или вообще (число игр)."""
+    statuses = set(s for s in csv(a.status) if s in STATUS) or {"ranked", "loved"}
+    ok = map_filter(a, stars, statuses, have_md5, installed_only=a.local_only)
+    if keys:
+        rough = map_filter(a, (stars[0] - SR_DRIFT, stars[1] + SR_DRIFT), statuses, have_md5, a.local_only)
+        songs = popular_crowd(a, keys, cfgs, rough, ok, log)
+    else:
+        songs = popular_plays(a, stars, statuses, ok, log)
+    picked = []
+    for maps in songs:
+        for c in maps[:a.per_set]:
+            c.update(score=0.0, metrics={})
+            picked.append(c)
+            if len(picked) >= a.count:
+                return picked
+    return picked
+
+
 # ------------------------------------------------------- подбор и запись ----
 
 def prepare(a):
@@ -450,12 +601,16 @@ def select(a, log=print):
         title = _("Турнирные") + " " + str(a.tournament).replace(" ", "")
         cfgs = []
     else:
-        if not a.skill and not a.like:
+        if not a.skill and not a.like and not a.popular:
             raise RuntimeError(_("Нужен навык, карты-образцы или турнирные слоты"))
         resolved = [skills.resolve(x) for x in csv(a.skill)]
         keys = [k for k, _cfg in resolved]
         cfgs = [cfg for _k, cfg in resolved]
-        title = " + ".join(skills.title(c, a.lang) for c in cfgs) if cfgs else _("Похожие")
+        title = " + ".join(skills.title(c, a.lang) for c in cfgs)
+        if a.popular:
+            title = (_("Популярные") + " " + title).strip()
+        elif not title:
+            title = _("Похожие")
     name = a.name or ("%s %g-%g*" % (title, stars[0], stars[1]))
     log(_("Задача: %s | звёзды %g-%g | карт: %d", title, stars[0], stars[1], a.count))
 
@@ -469,6 +624,8 @@ def select(a, log=print):
 
     if a.tournament:
         picked = pick_tournament(a, stars, log)
+    elif a.popular:
+        picked = pick_popular(a, stars, keys, cfgs, have_md5, log)
     else:
         profile, ids, ref_sets = None, [], set()
         if a.like:
@@ -637,6 +794,9 @@ def build_parser():
     g.add_argument("--skill", help="comma-separated skills: streams, jumps, tech, fingercontrol, ...")
     g.add_argument("--like", help="comma-separated reference difficulty ids (find similar maps)")
     g.add_argument("--tournament", help="tournament slots: NM2,NM3,NM4 or whole mods: NM,HD")
+    g.add_argument("--popular", action="store_true",
+                   help="the most popular songs: among fans of --skill (osu!Collector player collections) "
+                        "or, without --skill, the most played maps")
     g = p.add_argument_group("map and music")
     g.add_argument("--stars", required=True, help="star range, e.g. 5.2-6.0")
     g.add_argument("--bpm", default=None, help="map BPM, e.g. 170-220")
@@ -659,7 +819,8 @@ def build_parser():
     g.add_argument("--min-pc", type=int, default=0, help="minimum playcount of the difficulty")
     g.add_argument("--pop-weight", type=float, default=0.0, help="popularity bonus (0-20)")
     g.add_argument("--stream-bpm", default=None, help="stream BPM, e.g. 180-210")
-    g.add_argument("--status", default="ranked", help="ranked,loved,approved,qualified")
+    g.add_argument("--status", default=None,
+                   help="ranked,loved,approved,qualified (default: ranked; with --popular: ranked,loved)")
     g.add_argument("--pool", type=int, default=260, help="how many candidates to check")
     g.add_argument("--depth", type=int, default=150, help="search depth")
     g.add_argument("--per-set", type=int, default=1, help="max difficulties from one song")
