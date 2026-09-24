@@ -98,7 +98,9 @@ python trainer.py --help
 - Player collections: [osu!Collector](https://osucollector.com) — public collections whose names
   mention a skill; map details come from osu.direct. A prebuilt index ships in `data/`, so the app
   itself never queries osu!Collector; `python collector.py build` refreshes the index (about 1.5 hours:
-  one request at a time, at most one every 1.4 seconds, cached).
+  one request at a time, at most one every 1.4 seconds, cached). Star ratings change when osu!
+  recalculates them, so maps from the index are re-checked on osu.direct before they are used;
+  `python collector.py build --cached --refresh-meta` refreshes only the map details (about 15 minutes).
 
 ## Your own website
 

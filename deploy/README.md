@@ -42,7 +42,9 @@ certbot --nginx -d osu.gravitacia.art
 
 База коллекций игроков osu!Collector (`data/collector.json.gz`) приходит вместе с кодом, на сервере
 её собирать не нужно. Обновляет её автор проекта: `python collector.py build` (около полутора часов),
-затем `python release.py` и коммит `data/collector.json.gz`.
+затем `python release.py` и коммит `data/collector.json.gz`. После пересчёта звёзд на osu! хватит
+`python collector.py build --cached --refresh-meta` (около 15 минут): подборки не скачиваются заново,
+обновляются только данные карт. Подбор и без этого сверяет звёзды карт из базы с osu.direct.
 
 ## Выкладка со своего компьютера
 

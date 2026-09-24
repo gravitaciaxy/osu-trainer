@@ -81,6 +81,8 @@ EN = {
     "Подборка не найдена или устарела": "The selection was not found or has expired",
     "Подборка «%s», карт: %d": "Selection \"%s\", maps: %d",
     "  из коллекций игроков (osu!Collector): %d": "  from player collections (osu!Collector): %d",
+    "  зеркало osu.direct не отвечает - остальные карты из коллекций игроков пропущены":
+        "  the osu.direct mirror is not responding - skipping the rest of the maps from player collections",
     "  карт-образцов нет в коллекциях игроков osu!Collector":
         "  the reference maps are not in any osu!Collector player collection",
     "osu!Collector: подборок «%s»: %d": "osu!Collector: \"%s\" collections: %d",
@@ -164,6 +166,8 @@ ES = {
     "Подборка не найдена или устарела": "La selección no existe o ha caducado",
     "Подборка «%s», карт: %d": "Selección \"%s\", mapas: %d",
     "  из коллекций игроков (osu!Collector): %d": "  de colecciones de jugadores (osu!Collector): %d",
+    "  зеркало osu.direct не отвечает - остальные карты из коллекций игроков пропущены":
+        "  el mirror osu.direct no responde: se omite el resto de mapas de las colecciones de jugadores",
     "  карт-образцов нет в коллекциях игроков osu!Collector":
         "  los mapas de referencia no están en ninguna colección de jugadores de osu!Collector",
     "osu!Collector: подборок «%s»: %d": "osu!Collector: colecciones «%s»: %d",

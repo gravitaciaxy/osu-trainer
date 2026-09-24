@@ -14,11 +14,15 @@
      osu.direct по 100 карт за запрос. Названия не храним: они есть в .osu, который всё равно
      скачивается для разбора.
 Все ответы кэшируются в cache/collector, повторная сборка докачивает только изменившееся.
+`--cached` не ищет подборки заново, `--refresh-meta` заново спрашивает данные всех карт: звёзды
+меняются при пересчётах рейтинга osu! (`build --cached --refresh-meta` - около 15 минут). При подборе
+данные карт из базы всё равно сверяются с osu.direct (refreshed).
 Готовая база лежит в data/collector.json.gz; `python release.py` кладёт туда свежую.
 """
 import collections
 import concurrent.futures as cf
 import gzip
+import itertools
 import json
 import math
 import os
@@ -212,33 +216,49 @@ def members(todo, log=_log):
     return kept
 
 
-def fetch_meta(bids, log=_log):
-    """Данные карт с зеркала osu.direct, по 100 за запрос; известные повторно не спрашиваем.
-    {bid: [sid, режим, звёзды, bpm, длина, статус, игр, md5] или None, если карты нет}."""
+def fresh_meta(bids):
+    """Данные карт с зеркала osu.direct, не больше 100 за раз: {bid: [sid, режим, звёзды, bpm, длина,
+    статус, игр, md5] или None, если карты нет} или None, если зеркало не ответило."""
+    r = net.get("https://osu.direct/api/v2/beatmaps", params={"ids": ",".join(map(str, bids))}, timeout=60)
+    try:
+        rows = r.json() if r is not None else None
+    except ValueError:
+        return None
+    if not isinstance(rows, list):
+        return None
+    got = {b.get("id"): b for b in rows if isinstance(b, dict)}
+    out = {}
+    for bid in bids:
+        b = got.get(bid)
+        out[bid] = None if b is None else [
+            b.get("beatmapset_id"), b.get("mode_int", -1), round(b.get("difficulty_rating") or 0, 2),
+            round(b.get("bpm") or 0, 1), b.get("total_length") or 0, STATUS.get(b.get("status"), 0),
+            b.get("playcount") or 0, b.get("checksum") or ""]
+    return out
+
+
+def fetch_meta(bids, log=_log, refresh=False):
+    """Данные карт с зеркала osu.direct, по 100 за запрос; известные повторно не спрашиваем, если не
+    refresh. {bid: [sid, режим, звёзды, bpm, длина, статус, игр, md5] или None, если карты нет}."""
     meta = _load(META_JSON, {})
-    todo = [b for b in bids if str(b) not in meta]
+    todo = list(bids) if refresh else [b for b in bids if str(b) not in meta]
     log("данные карт: уже есть %d, запросить %d (%d запросов)"
         % (len(bids) - len(todo), len(todo), math.ceil(len(todo) / 100)))
+    failed = 0
     for k in range(0, len(todo), 100):
         chunk = todo[k:k + 100]
-        r = net.get("https://osu.direct/api/v2/beatmaps", params={"ids": ",".join(map(str, chunk))}, timeout=60)
-        try:
-            rows = r.json() if r is not None else None
-        except ValueError:
-            rows = None
-        if not isinstance(rows, list):
-            continue                            # зеркало не ответило - спросим при следующей сборке
-        got = {b.get("id"): b for b in rows if isinstance(b, dict)}
-        for bid in chunk:
-            b = got.get(bid)
-            meta[str(bid)] = None if b is None else [
-                b.get("beatmapset_id"), b.get("mode_int", -1), round(b.get("difficulty_rating") or 0, 2),
-                round(b.get("bpm") or 0, 1), b.get("total_length") or 0, STATUS.get(b.get("status"), 0),
-                b.get("playcount") or 0, b.get("checksum") or ""]
+        rows = fresh_meta(chunk)
+        if rows is None:
+            failed += 1                         # у этих карт остаются прежние данные, если были
+            continue
+        meta.update((str(bid), row) for bid, row in rows.items())
         if k // 100 % 25 == 24:
             _save(META_JSON, meta)
             log("  %d/%d" % (k + len(chunk), len(todo)))
     _save(META_JSON, meta)
+    if failed:
+        log("  зеркало не ответило на запросов: %d - у этих карт нет свежих данных, запусти сборку ещё раз"
+            % failed)
     return meta
 
 
@@ -262,7 +282,7 @@ def compile_index(kept, meta, log=_log):
     return dict(v=1, built=int(time.time()), collections=cols, maps=maps)
 
 
-def build(log=_log, limit=None, rediscover=True):
+def build(log=_log, limit=None, rediscover=True, refresh=False):
     found = discover(log) if rediscover else _load(os.path.join(RAW_DIR, "found.json"), {})
     todo = chosen(found)
     if limit:
@@ -278,7 +298,7 @@ def build(log=_log, limit=None, rediscover=True):
     seen = collections.Counter(b for _c, bids in kept for b in bids)
     log("разных карт: %d, из них в %d+ подборках: %d"
         % (len(seen), MIN_SEEN, sum(1 for n in seen.values() if n >= MIN_SEEN)))
-    meta = fetch_meta(sorted(b for b, n in seen.items() if n >= MIN_SEEN), log)
+    meta = fetch_meta(sorted(b for b, n in seen.items() if n >= MIN_SEEN), log, refresh)
     index = compile_index(kept, meta, log)
     _save(INDEX_JSON, index)
     return index
@@ -407,18 +427,33 @@ class Index:
                     bpm=bpm, length=length, status=STATUS_NAME.get(status, ""), playcount=playcount,
                     genre=0, local=False, slot="", src="collector")
 
-    def top(self, weights, ok, limit, per_set=2, exclude=()):
-        """Карты с наибольшим весом, прошедшие фильтр ok(кандидат), не больше per_set с набора."""
-        out, per = [], {}
+    def top(self, weights, ok, exclude=()):
+        """Карты по убыванию веса, прошедшие фильтр ok(кандидат)."""
         for i in sorted(weights, key=weights.get, reverse=True):
             c = self.candidate(i)
-            if c["bid"] in exclude or per.get(c["sid"], 0) >= per_set or not ok(c):
-                continue
-            per[c["sid"]] = per.get(c["sid"], 0) + 1
-            out.append(c)
-            if len(out) >= limit:
-                break
-        return out
+            if c["bid"] not in exclude and ok(c):
+                yield c
+
+
+def refreshed(cands, pages):
+    """Кандидаты из базы со свежими данными osu.direct: звёзды меняются при пересчётах рейтинга osu!,
+    игр становится больше, карты обновляют. По 100 карт за запрос, не больше pages запросов; карт,
+    которых на osu! больше нет, среди них не будет. Если зеркало не ответило, бросает OSError."""
+    cands = iter(cands)
+    for _n in range(pages):
+        batch = list(itertools.islice(cands, 100))
+        if not batch:
+            return
+        rows = fresh_meta([c["bid"] for c in batch])
+        if rows is None:
+            raise OSError("osu.direct не ответил")
+        for c in batch:
+            row = rows[c["bid"]]
+            if row and row[1] == 0 and row[7]:
+                _sid, _mode, sr, bpm, length, status, playcount, md5 = row
+                c.update(md5=md5, sr=sr, bpm=bpm, length=length, status=STATUS_NAME.get(status, ""),
+                         playcount=playcount)
+                yield c
 
 
 _INDEX = {"key": None, "index": None}
@@ -488,6 +523,6 @@ if __name__ == "__main__":
         plan(rediscover=again)
     elif cmd == "build":
         lim = [int(x.split("=", 1)[1]) for x in sys.argv if x.startswith("--limit=")]
-        build(limit=lim[0] if lim else None, rediscover=again)
+        build(limit=lim[0] if lim else None, rediscover=again, refresh="--refresh-meta" in sys.argv)
     elif cmd == "stats":
         stats()

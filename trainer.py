@@ -299,20 +299,37 @@ def gather_local(a, stars, library):
 
 
 CROWD_SHARE = 0.5      # до половины кандидатов - из коллекций игроков, остальных ищет зеркало
+CROWD_PAGES = 10       # не больше стольких запросов к osu.direct на таблицу по 100 карт из базы
+# звёзды в базе osu!Collector - с её сборки, а пересчёты рейтинга сдвигают их на десятые (у 99% карт
+# меньше чем на 0.6): по базе карты отбираются с таким запасом, точно - по свежим данным зеркала
+SR_DRIFT = 0.6
 
 
 def gather_crowd(index, keys, co, refs, a, stars, have_md5, log):
-    """Кандидаты из коллекций игроков osu!Collector: самые «народные» карты навыка и соседи образцов."""
+    """Кандидаты из коллекций игроков osu!Collector: самые «народные» карты навыка и соседи образцов.
+    Фильтры проверяются по свежим звёздам, md5, статусу и числу игр с osu.direct, а не по базе."""
     if [g for g in csv(a.genres) if g.isdigit()] or csv(a.words):
         return []           # жанра и тегов в базе osu!Collector нет - такие фильтры проверит зеркало
-    ok = map_filter(a, stars, set(s for s in csv(a.status) if s in STATUS) or {"ranked"}, have_md5)
+    statuses = set(s for s in csv(a.status) if s in STATUS) or {"ranked"}
+    rough = map_filter(a, (stars[0] - SR_DRIFT, stars[1] + SR_DRIFT), statuses, have_md5)
+    ok = map_filter(a, stars, statuses, have_md5)
     tables = [t for t in (co and co["weights"], keys and index.skill_weights(keys)) if t]
     limit = max(10, int(a.pool * CROWD_SHARE)) // max(len(tables), 1)
     out, seen = [], set(refs)
-    for table in tables:
-        for c in index.top(table, ok, limit, a.per_set_probe, exclude=seen):
-            seen.add(c["bid"])
-            out.append(c)
+    try:
+        for table in tables:
+            per, got = {}, 0
+            for c in collector.refreshed(index.top(table, rough, exclude=seen), CROWD_PAGES):
+                if per.get(c["sid"], 0) >= a.per_set_probe or not ok(c):
+                    continue
+                per[c["sid"]] = per.get(c["sid"], 0) + 1
+                seen.add(c["bid"])
+                out.append(c)
+                got += 1
+                if got >= limit:
+                    break
+    except OSError:
+        log(_("  зеркало osu.direct не отвечает - остальные карты из коллекций игроков пропущены"))
     log(_("  из коллекций игроков (osu!Collector): %d", len(out)))
     return out
 
@@ -442,9 +459,6 @@ def pick_tournament(a, stars, log):
 # ------------------------------------------------------ популярные песни ----
 
 POPULAR_PAGES = 10          # не больше стольких запросов к зеркалу по 100 наборов
-# звёзды в базе osu!Collector - с её сборки, а пересчёты рейтинга сдвигают их на десятые (у 99% карт
-# меньше чем на 0.6): по базе карты отбираются с таким запасом, точно - по свежим данным зеркала
-SR_DRIFT = 0.6
 
 
 def _norm(text):
