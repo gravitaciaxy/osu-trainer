@@ -7,7 +7,7 @@ import platform
 import re
 import shutil
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_JSON = os.path.join(TOOL_DIR, "config.json")
@@ -140,11 +140,18 @@ def realm_file_format(realm_path):
     return h[20 + (h[23] & 1)]
 
 
+def user_agent(*extra):
+    """Честный User-Agent: программа, версия и страница проекта, где можно связаться с автором.
+    Браузером не притворяемся - сервисы должны видеть, кто к ним ходит."""
+    parts = ["osu!drill", "+https://github.com/%s" % REPO] + [p for p in extra if p]
+    return "osu-trainer/%s (%s)" % (VERSION, "; ".join(parts))
+
+
 def liquipedia_user_agent():
+    """Liquipedia требует контакт в User-Agent: страница проекта есть всегда, свой сайт и почта или
+    Discord из настроек - по желанию."""
     cfg = load()
-    parts = [p.strip() for p in (cfg.get("project_url", ""), cfg.get("contact", "")) if p.strip()]
-    info = "; ".join(parts) if parts else "personal non-commercial osu! collection tool, low request rate"
-    return "osu-trainer/%s (%s)" % (VERSION, info)
+    return user_agent(cfg.get("project_url", "").strip(), cfg.get("contact", "").strip())
 
 
 def status():

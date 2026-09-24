@@ -2,8 +2,10 @@
 """
 Турнирные мапулы с Liquipedia (liquipedia.net/osu), данные под лицензией CC-BY-SA 3.0.
 
-Правила API Liquipedia соблюдаются: только api.php, не чаще 1 запроса в 2 секунды,
-gzip, собственный User-Agent, результаты кэшируются на диске.
+Правила API Liquipedia (liquipedia.net/api-terms-of-use) соблюдаются: только api.php и только
+action=query (для action=parse лимит строже - раз в 30 с), не чаще 1 запроса в 2 секунды, gzip,
+User-Agent с адресом проекта, результаты кэшируются на диске. Базу собирает только автор
+(python pools.py build); программа у пользователей скачивает готовую базу из репозитория.
 """
 import gzip
 import http.client
@@ -71,6 +73,8 @@ class Client:
                     body = gzip.decompress(body)
                 if r.status == 200:
                     return json.loads(body.decode("utf-8"))
+                if r.status == 403:
+                    break           # адрес заблокирован: повторы превратят временный бан в постоянный
                 if r.status == 429:
                     time.sleep(30)
                     continue

@@ -1,5 +1,15 @@
 # -*- coding: utf-8 -*-
-"""Сетевой слой без сторонних библиотек: несколько зеркал, ограничение частоты запросов, кэш."""
+"""
+Сетевой слой без сторонних библиотек.
+
+Правила вежливости, чтобы нас нигде не забанили:
+- честный User-Agent с адресом проекта, браузером не притворяемся;
+- лимиты ниже опубликованных: osu.direct - 120 запросов в минуту и 10 за 2 с, osu! - не больше
+  60 в минуту; .osu берём с зеркала, а с osu.ppy.sh - только если на зеркале карты нет;
+- на 429 ждём Retry-After всеми потоками сразу; на 403 и бан отключаем сервис и не стучимся
+  в него часами (catboy.best нас уже заблокировал, поэтому программа к нему не обращается);
+- одинаковые поисковые запросы берутся из памяти.
+"""
 import collections
 import gzip
 import json
@@ -11,7 +21,9 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-HEAD = {"User-Agent": "Mozilla/5.0 (osu-trainer; personal beatmap collection helper)"}
+import config
+
+HEAD = {"User-Agent": config.user_agent()}
 _SSL = ssl.create_default_context()
 
 
@@ -105,6 +117,12 @@ class Bucket:
         self.burst_window = burst_window
         self.hits = collections.deque()
         self.lock = threading.Lock()
+        self.paused_until = 0.0
+
+    def pause(self, seconds):
+        """Сервис ответил 429: ждут все потоки, а не только тот, кому отказали."""
+        with self.lock:
+            self.paused_until = max(self.paused_until, time.time() + seconds)
 
     def wait(self):
         while True:
@@ -113,10 +131,12 @@ class Bucket:
                 while self.hits and now - self.hits[0] > 60:
                     self.hits.popleft()
                 recent = sum(1 for t in self.hits if now - t < self.burst_window)
-                if len(self.hits) < self.per_min and recent < self.burst_n:
+                if now < self.paused_until:
+                    delay = self.paused_until - now
+                elif len(self.hits) < self.per_min and recent < self.burst_n:
                     self.hits.append(now)
                     return
-                if recent >= self.burst_n:
+                elif recent >= self.burst_n:
                     delay = self.burst_window - (now - self.hits[-recent])
                 else:
                     delay = 60 - (now - self.hits[0])
@@ -124,30 +144,31 @@ class Bucket:
 
 
 BUCKETS = {
-    "osu.direct": Bucket(90, 5, 2.2),
-    "catboy.best": Bucket(50, 3, 2.5),
-    "osu.ppy.sh": Bucket(80, 4, 2.0),
+    "osu.direct": Bucket(100, 8, 2.0),          # у зеркала 120 в минуту и 10 за 2 с
+    "osu.ppy.sh": Bucket(30, 2, 2.0),           # запасной источник .osu; osu! просит не больше 60 в минуту
     "osucollector.com": Bucket(40, 1, 1.4),     # сайт энтузиаста: по одному запросу, не чаще раза в 1.4 с
 }
-DISABLED = {}
+DISABLED = {}                                   # хост -> (причина, до какого времени не обращаться)
+STRIKES = collections.Counter()                 # сколько раз подряд хост нам отказал
+OFF_HOURS = (0.25, 1, 4, 24)
 _lock = threading.Lock()
 
 
-def disable(host, why):
+def disable(host, why, hours=None):
+    """Отключает хост: сначала на 15 минут, при повторных отказах на час, 4 часа и сутки.
+    Стучаться в сервис, который нас уже заблокировал, - верный путь к постоянному бану."""
     with _lock:
-        if host not in DISABLED:
-            DISABLED[host] = (why, time.time())
-            print("  [зеркало %s отключено: %s]" % (host, why), flush=True)
+        if _disabled(host):
+            return
+        STRIKES[host] += 1
+        hours = hours or OFF_HOURS[min(STRIKES[host], len(OFF_HOURS)) - 1]
+        DISABLED[host] = (why, time.time() + hours * 3600)
+    print("  [%s отключён на %g ч: %s]" % (host, hours, why), flush=True)
 
 
 def _disabled(host):
     item = DISABLED.get(host)
-    if not item:
-        return False
-    if time.time() - item[1] > 1800:        # через полчаса пробуем снова
-        DISABLED.pop(host, None)
-        return False
-    return True
+    return bool(item) and time.time() < item[1]
 
 
 def get(url, params=None, stream=False, timeout=30, tries=3, headers=None):
@@ -164,15 +185,24 @@ def get(url, params=None, stream=False, timeout=30, tries=3, headers=None):
             time.sleep(1.0 + attempt)
             continue
         if r.status_code == 429:
+            r.close()
             try:
-                wait = float(r.headers.get("Retry-After", 5))
+                wait = float(r.headers.get("Retry-After") or 5)
             except (TypeError, ValueError):
                 wait = 5
-            time.sleep(min(wait, 30))
+            wait = min(max(wait, 5), 120)
+            if bucket:
+                bucket.pause(wait)
+            else:
+                time.sleep(wait)
             continue
         if r.status_code == 403:
+            r.close()
             disable(host, "доступ запрещён (403)")
             return None
+        if 400 <= r.status_code < 500:
+            r.close()
+            return None                 # «нет такой карты» повтором не исправить - не тратим запросы
         if r.status_code != 200:
             r.close()
             time.sleep(0.5 + attempt)
@@ -183,37 +213,44 @@ def get(url, params=None, stream=False, timeout=30, tries=3, headers=None):
             except (OSError, ValueError):
                 continue
             if b"banned from our services" in head:
-                disable(host, "временный бан за частые запросы")
+                disable(host, "бан за частые запросы", hours=24)
                 return None
+        STRIKES.pop(host, None)
         return r
     return None
 
 
 # ------------------------------------------------------------- провайдеры ---
 
+SEARCH_TTL = 600
+_search_cache = {}
+
+
 def search(query, stars, status, offset, limit=50):
-    """Список бимапсетов в формате osu!api v2 (или пустой список)."""
-    if not _disabled("catboy.best") and stars[0] is not None:
-        q = ("stars>%.2f stars<%.2f %s" % (stars[0] - 0.25, stars[1] + 0.25, query)).strip()
-        r = get("https://catboy.best/api/v2/search",
-                params={"query": q, "limit": limit, "offset": offset, "mode": 0, "status": status})
-        if r is not None:
-            try:
-                data = r.json()
-                if isinstance(data, list):
-                    return data
-            except ValueError:
-                pass
+    """Бимапсеты с osu.direct в формате osu!api v2 с фильтром по звёздам (или пустой список).
+    Одинаковый запрос 10 минут отдаётся из памяти: подбор часто перезапускают, поменяв пару
+    фильтров, и зеркалу незачем отвечать на то же самое ещё раз."""
+    key = (query, stars[0], stars[1], status, offset, limit)
+    hit = _search_cache.get(key)
+    if hit and time.time() - hit[0] < SEARCH_TTL:
+        return hit[1]
+    q = query
+    if stars[0] is not None:
+        q = ("[beatmaps.difficulty_rating %.2f TO %.2f] %s"
+             % (max(stars[0] - 0.02, 0), stars[1] + 0.02, query)).strip()
     r = get("https://osu.direct/api/v2/search",
-            params={"q": query, "amount": limit, "offset": offset, "mode": 0, "status": status})
-    if r is not None:
-        try:
-            data = r.json()
-            if isinstance(data, list):
-                return data
-        except ValueError:
-            pass
-    return []
+            params={"q": q, "amount": limit, "offset": offset, "mode": 0, "status": status})
+    try:
+        data = r.json() if r is not None else None
+    except ValueError:
+        data = None
+    if not isinstance(data, list):
+        return []
+    with _lock:
+        if len(_search_cache) > 1000:
+            _search_cache.clear()
+        _search_cache[key] = (time.time(), data)
+    return data
 
 
 def direct_search(filters=(), sort=None, offset=0, status=None, amount=100):
@@ -250,9 +287,10 @@ def osu_file(beatmap_id, cache_dir):
     if os.path.exists(path) and os.path.getsize(path) > 200:
         with open(path, encoding="utf-8", errors="ignore") as f:
             return f.read()
-    for url in ("https://osu.ppy.sh/osu/%s" % beatmap_id,
-                "https://osu.direct/api/osu/%s" % beatmap_id,
-                "https://catboy.best/osu/%s" % beatmap_id):
+    # сначала зеркало (osu.direct прямо разрешает автоматическое скачивание), с сайта osu! -
+    # только если на зеркале карты нет, и медленно
+    for url in ("https://osu.direct/api/osu/%s" % beatmap_id,
+                "https://osu.ppy.sh/osu/%s" % beatmap_id):
         r = get(url, timeout=25)
         if r is None:
             continue
@@ -270,30 +308,25 @@ def osz(set_id, out_dir):
     path = os.path.join(out_dir, "%s.osz" % set_id)
     if os.path.exists(path) and os.path.getsize(path) > 10000:
         return path
-    for url in ("https://osu.direct/api/d/%s" % set_id,
-                "https://catboy.best/d/%s" % set_id):
-        r = get(url, stream=True, timeout=240, tries=2)
-        if r is None:
-            continue
-        tmp = path + ".part"
-        try:
-            with open(tmp, "wb") as f:
-                for chunk in r.iter_content(1 << 16):
-                    f.write(chunk)
-        except OSError:
-            if os.path.exists(tmp):
-                os.remove(tmp)
-            continue
-        if os.path.getsize(tmp) < 10000:
+    r = get("https://osu.direct/api/d/%s" % set_id, stream=True, timeout=240, tries=2)
+    if r is None:
+        return None
+    tmp = path + ".part"
+    try:
+        with open(tmp, "wb") as f:
+            for chunk in r.iter_content(1 << 16):
+                f.write(chunk)
+    except OSError:
+        if os.path.exists(tmp):
             os.remove(tmp)
-            continue
-        with open(tmp, "rb") as f:
-            if f.read(2) != b"PK":
-                os.remove(tmp)
-                continue
-        os.replace(tmp, path)
-        return path
-    return None
+        return None
+    with open(tmp, "rb") as f:
+        ok = os.path.getsize(tmp) >= 10000 and f.read(2) == b"PK"
+    if not ok:
+        os.remove(tmp)
+        return None
+    os.replace(tmp, path)
+    return path
 
 
 DOWNLOAD_LINKS = [

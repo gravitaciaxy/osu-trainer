@@ -40,7 +40,6 @@ RAW_DIR = os.path.join(CACHE, "collector")              # found.json, c<id>.json
 META_JSON = os.path.join(RAW_DIR, "meta.json")
 INDEX_JSON = os.path.join(CACHE, "collector.json")
 SEED = os.path.join(config.TOOL_DIR, "data", "collector.json.gz")
-HEAD = {"User-Agent": "osu-trainer/%s (+https://github.com/%s)" % (config.VERSION, config.REPO)}
 
 STATUS = {"ranked": 1, "approved": 2, "qualified": 3, "loved": 4}
 STATUS_NAME = {v: k for k, v in STATUS.items()}
@@ -98,7 +97,7 @@ def classify(name):
 
 
 def _api(path, **params):
-    r = net.get(API + path, params=params or None, headers=HEAD, timeout=90)
+    r = net.get(API + path, params=params or None, timeout=90)
     if r is None:
         return None
     try:

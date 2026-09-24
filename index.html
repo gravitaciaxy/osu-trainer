@@ -494,7 +494,7 @@ ru: {
   contact_ph:'почта или Discord', set_project:'Страница проекта', save:'Сохранить', close:'Закрыть',
   set_pools:'Турнирная база', pools_refresh:'Обновить базу', auto_detect:'найти автоматически',
   pools_info:'{m}, турнирных изданий: {e} · обновлено {d}',
-  pools_empty:'База ещё не собрана — нажми «Обновить базу» (2–3 минуты).',
+  pools_empty:'Базы пока нет — нажми «Обновить базу»: скачается за несколько секунд.',
   info:'Коллекций: {c} · в турнирной базе {m}', info_site:'В турнирной базе {m}, турнирных изданий: {e}',
   info_nopool:'Коллекций: {c} · турнирная база не собрана',
   need_slot:'Выбери хотя бы один слот (NM2, HD1 …)', need_skill:'Выбери навык или добавь карты-образцы',
@@ -512,7 +512,7 @@ ru: {
   banner_node:'Не хватает Node.js или зависимостей — запусти setup (см. README).',
   banner_fmt:'Эта версия osu!lazer использует новый формат базы — коллекции записывать нельзя, пока не обновишь osu!drill.',
   banner_site:'Это онлайн-версия: подбор работает здесь, а в игру коллекцию кладёт osu!drill на компьютере — кнопка «Добавить в игру».',
-  pools_building:'обновляю турнирную базу… (Liquipedia отдаёт данные медленно — такие у неё правила)',
+  pools_building:'скачиваю свежую турнирную базу…',
   add_to_game:'Добавить в игру', copy_link:'Скопировать ссылку', copied:'Скопировано',
   need_app_title:'Сайт не нашёл osu!drill на компьютере',
   need_app_text:'Коллекцию в игру записывает osu!drill на твоём компьютере. Если он уже запущен, а сайт его не видит (так бывает из-за блокировщика рекламы или настроек браузера), нажми «Уже установлен — открыть». Если ещё не установлен — поставь одной командой ниже, запусти и нажми «Добавить в игру» ещё раз. Можно и просто скачать карты по ссылкам в таблице.',
@@ -521,7 +521,7 @@ ru: {
   import_text:'Сайт {site} предлагает подборку «{name}» — {m}. Недостающие карты скачаются, коллекция появится в игре.',
   open_local:'Уже установлен — открыть',
   import_ok:'Добавить в игру', import_cancel:'Не надо', import_bad:'Не удалось загрузить подборку: {e}',
-  footer:'Турнирные пулы: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) и <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Подборки игроков: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Карты: osu.ppy.sh, osu.direct, catboy.best. Проект не связан с ppy Pty Ltd.',
+  footer:'Турнирные пулы: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) и <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Подборки игроков: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Карты: зеркало osu.direct и osu.ppy.sh. Проект не связан с ppy Pty Ltd.',
 
   tip_skills:'Какой навык тренировать. Можно выбрать несколько — карта оценивается по лучшему из них. Наведи на навык, чтобы увидеть, что именно он измеряет.',
   tip_pop_fans:'Самые популярные песни среди игроков, которые любят этот навык: во сколько подборок «tech», «streams», «aim»… на osu!Collector их положили (подборки, которые многие добавили в избранное, весят больше). Сверху — классика жанра, разные мапсеты одной песни считаются вместе. Можно выбрать несколько навыков. Ничего не выбрано — самые играемые карты osu! вообще; сузить их можно жанром и словами в тегах (touhou, vocaloid…). Карты не разбираются, поэтому подбор занимает секунды.',
@@ -565,7 +565,7 @@ ru: {
   tip_osu_exe:'Файл запуска osu!lazer — через него скачанные карты передаются в игру.',
   tip_contact:'Необязательно. Liquipedia просит указывать в запросах к ней контакт (почту или Discord), чтобы написать при проблемах.',
   tip_project:'Необязательно. Ссылка на страницу проекта (например, на GitHub) — тоже уходит в запросы к Liquipedia.',
-  tip_pools:'Своя база турнирных пулов из osu!wiki и Liquipedia. Обновляй раз в пару недель, чтобы подтянуть новые турниры.',
+  tip_pools:'База турнирных пулов из osu!wiki и Liquipedia. Кнопка скачивает свежую готовую базу из репозитория osu!drill — сама программа Liquipedia не опрашивает.',
   tip_add:'Кладёт подборку в игру через osu!drill на твоём компьютере. Если его нет — покажем, как поставить одной командой.',
   add_wait:'сначала подбери карты кнопкой «Подобрать карты»',
   feedback:'Обратная связь', fb_title:'Обратная связь',
@@ -596,7 +596,8 @@ ru: {
     '<h4>Полезно знать</h4><ul>' +
     '<li>Поддерживается только <b>osu!lazer</b>: коллекции записываются в его базу.</li>' +
     '<li>Перед каждым изменением база копируется в резерв, а если версия osu! использует незнакомый формат базы, программа откажется в неё писать.</li>' +
-    '<li>Карты скачиваются с osu.ppy.sh, osu.direct и catboy.best; турнирные пулы — из osu!wiki и Liquipedia, подборки игроков — с osu!Collector.</li>' +
+    '<li>Правила osu! запрещают программы, которые помогают играть, — osu!drill этого не делает: он не вмешивается в запущенную игру, не читает её память, не входит в твой аккаунт и ничего не отправляет от твоего имени. Он только добавляет коллекции в базу игры на твоём компьютере.</li>' +
+    '<li>Карты скачиваются с зеркала osu.direct, файлы .osu для разбора — оттуда же или с osu.ppy.sh; турнирные пулы — из osu!wiki и Liquipedia, подборки игроков — с osu!Collector. Запросов меньше, чем разрешают правила этих сервисов, и программа честно себя называет.</li>' +
     '<li>Открытый код (MIT): <a href="{repo}" target="_blank" rel="noopener">GitHub</a>.</li></ul>'
 },
 en: {
@@ -621,7 +622,7 @@ en: {
   contact_ph:'email or Discord', set_project:'Project page', save:'Save', close:'Close',
   set_pools:'Tournament database', pools_refresh:'Update database', auto_detect:'detect automatically',
   pools_info:'{m}, tournament editions: {e} · updated {d}',
-  pools_empty:'The database is not built yet — press "Update database" (2–3 minutes).',
+  pools_empty:'No database yet — press "Update database": it downloads in a few seconds.',
   info:'Collections: {c} · tournament database: {m}', info_site:'Tournament database: {m}, tournament editions: {e}',
   info_nopool:'{c} collections · tournament database not built',
   need_slot:'Pick at least one slot (NM2, HD1 …)', need_skill:'Pick a skill or add reference maps',
@@ -639,7 +640,7 @@ en: {
   banner_node:'Node.js or dependencies are missing — run setup (see README).',
   banner_fmt:'This osu!lazer version uses a newer database format — collections cannot be written until osu!drill is updated.',
   banner_site:'This is the online version: maps are selected here, and osu!drill on your computer puts the collection into the game — use "Add to game".',
-  pools_building:'updating the tournament database… (Liquipedia serves data slowly per its API terms)',
+  pools_building:'downloading the latest tournament database…',
   add_to_game:'Add to game', copy_link:'Copy link', copied:'Copied',
   need_app_title:"The website couldn't find osu!drill on your computer",
   need_app_text:"osu!drill on your computer writes the collection into your game. If it is already running but the website can't see it (an ad blocker or browser settings can cause this), press \"Already installed — open\". If it isn't installed yet, install it with one command below, start it and press \"Add to game\" again. Or just download the maps from the links in the table.",
@@ -648,7 +649,7 @@ en: {
   import_text:'{site} offers the selection "{name}" — {m}. Missing maps will be downloaded and the collection will appear in the game.',
   open_local:'Already installed — open',
   import_ok:'Add to game', import_cancel:'No thanks', import_bad:'Could not load the selection: {e}',
-  footer:'Tournament pools: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) and <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Player collections: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Maps: osu.ppy.sh, osu.direct, catboy.best. Not affiliated with ppy Pty Ltd.',
+  footer:'Tournament pools: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) and <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Player collections: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Maps: the osu.direct mirror and osu.ppy.sh. Not affiliated with ppy Pty Ltd.',
 
   tip_skills:'Which skill to train. You can pick several — a map is scored by the best of them. Hover a skill to see what it measures.',
   tip_pop_fans:'The most popular songs among players who love this skill: how many osu!Collector collections named "tech", "streams", "aim"… include them (collections many people favourited weigh more). The classics of the scene come first; different mapsets of the same song count together. You can pick several skills. Nothing selected — the most played osu! maps overall; narrow them down by genre or words in tags (touhou, vocaloid…). Maps are not analysed, so it takes seconds.',
@@ -692,7 +693,7 @@ en: {
   tip_osu_exe:'osu!lazer executable — downloaded maps are passed to the game through it.',
   tip_contact:'Optional. Liquipedia asks API users to include contact info (email or Discord) so they can reach out about problems.',
   tip_project:'Optional. A link to the project page (e.g. GitHub) — also sent in requests to Liquipedia.',
-  tip_pools:'Own database of tournament pools from osu!wiki and Liquipedia. Update every couple of weeks to pick up new tournaments.',
+  tip_pools:'Tournament pools database from the osu!wiki and Liquipedia. The button downloads the latest ready-made database from the osu!drill repository — the app itself never queries Liquipedia.',
   tip_add:'Puts the selection into your game through osu!drill on your computer. If it is not installed, you will see how to install it with one command.',
   add_wait:'find maps first with the "Find maps" button',
   feedback:'Feedback', fb_title:'Send feedback',
@@ -723,7 +724,8 @@ en: {
     '<h4>Good to know</h4><ul>' +
     '<li>Only <b>osu!lazer</b> is supported: collections are written into its database.</li>' +
     '<li>The database is backed up before every change, and the app refuses to write if your osu! version uses an unknown database format.</li>' +
-    '<li>Maps are downloaded from osu.ppy.sh, osu.direct and catboy.best; tournament pools come from the osu!wiki and Liquipedia, player collections from osu!Collector.</li>' +
+    '<li>osu! rules forbid programs that help you play — osu!drill doesn’t: it doesn’t interfere with the running game, doesn’t read its memory, doesn’t log into your account and sends nothing on your behalf. It only adds collections to the game database on your computer.</li>' +
+    '<li>Maps are downloaded from the osu.direct mirror; .osu files for analysis come from there too, or from osu.ppy.sh; tournament pools come from the osu!wiki and Liquipedia, player collections from osu!Collector. The app sends fewer requests than these services allow and identifies itself honestly.</li>' +
     '<li>Open source (MIT): <a href="{repo}" target="_blank" rel="noopener">GitHub</a>.</li></ul>'
 },
 es: {
@@ -748,7 +750,7 @@ es: {
   contact_ph:'email o Discord', set_project:'Página del proyecto', save:'Guardar', close:'Cerrar',
   set_pools:'Base de torneos', pools_refresh:'Actualizar base', auto_detect:'detectar automáticamente',
   pools_info:'{m}, ediciones de torneos: {e} · actualizada {d}',
-  pools_empty:'La base aún no está creada: pulsa «Actualizar base» (2–3 minutos).',
+  pools_empty:'Todavía no hay base: pulsa «Actualizar base» y se descargará en unos segundos.',
   info:'Colecciones: {c} · base de torneos: {m}', info_site:'Base de torneos: {m}, ediciones de torneos: {e}',
   info_nopool:'Colecciones: {c} · base de torneos sin crear',
   need_slot:'Elige al menos un slot (NM2, HD1 …)', need_skill:'Elige una habilidad o añade mapas de referencia',
@@ -766,7 +768,7 @@ es: {
   banner_node:'Faltan Node.js o dependencias: ejecuta setup (ver README).',
   banner_fmt:'Esta versión de osu!lazer usa un formato de base nuevo: no se pueden escribir colecciones hasta actualizar osu!drill.',
   banner_site:'Esta es la versión web: los mapas se eligen aquí y osu!drill en tu ordenador mete la colección en el juego con el botón «Añadir al juego».',
-  pools_building:'actualizando la base de torneos… (Liquipedia sirve los datos despacio, según sus normas)',
+  pools_building:'descargando la base de torneos más reciente…',
   add_to_game:'Añadir al juego', copy_link:'Copiar enlace', copied:'Copiado',
   need_app_title:'El sitio no encontró osu!drill en tu ordenador',
   need_app_text:'La colección la escribe en el juego osu!drill, en tu ordenador. Si ya está abierto pero el sitio no lo ve (puede pasar por un bloqueador de anuncios o por la configuración del navegador), pulsa «Ya está instalado: abrir». Si aún no lo tienes, instálalo con el comando de abajo, ábrelo y vuelve a pulsar «Añadir al juego». También puedes descargar los mapas con los enlaces de la tabla.',
@@ -775,7 +777,7 @@ es: {
   import_text:'{site} te ofrece la selección «{name}»: {m}. Los mapas que falten se descargarán y la colección aparecerá en el juego.',
   open_local:'Ya está instalado: abrir',
   import_ok:'Añadir al juego', import_cancel:'No, gracias', import_bad:'No se pudo cargar la selección: {e}',
-  footer:'Mappools de torneos: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) y <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Colecciones de jugadores: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Mapas: osu.ppy.sh, osu.direct, catboy.best. Proyecto no afiliado a ppy Pty Ltd.',
+  footer:'Mappools de torneos: <a href="https://osu.ppy.sh/wiki/Tournaments" target="_blank" rel="noopener">osu!wiki</a> (CC BY-NC 4.0) y <a href="https://liquipedia.net/osu" target="_blank" rel="noopener">Liquipedia</a> (CC BY-SA 3.0). Colecciones de jugadores: <a href="https://osucollector.com" target="_blank" rel="noopener">osu!Collector</a>. Mapas: el mirror osu.direct y osu.ppy.sh. Proyecto no afiliado a ppy Pty Ltd.',
 
   tip_skills:'Qué habilidad entrenar. Puedes elegir varias: cada mapa se puntúa por la mejor de ellas. Pasa el cursor por una habilidad para ver qué mide.',
   tip_pop_fans:'Las canciones más populares entre quienes disfrutan esta habilidad: en cuántas colecciones «tech», «streams», «aim»… de osu!Collector aparecen (las colecciones que mucha gente marcó como favoritas pesan más). Primero salen los clásicos de la escena; los distintos mapsets de una misma canción cuentan juntos. Puedes elegir varias habilidades. Sin selección: los mapas de osu! más jugados en general; puedes acotarlos por género o por palabras en las etiquetas (touhou, vocaloid…). Los mapas no se analizan, así que tarda unos segundos.',
@@ -819,7 +821,7 @@ es: {
   tip_osu_exe:'Ejecutable de osu!lazer: a través de él los mapas descargados llegan al juego.',
   tip_contact:'Opcional. Liquipedia pide incluir un contacto (email o Discord) en las peticiones a su API para poder avisar si hay problemas.',
   tip_project:'Opcional. Enlace a la página del proyecto (por ejemplo, GitHub); también se envía en las peticiones a Liquipedia.',
-  tip_pools:'Base propia de mappools de torneos de la osu!wiki y Liquipedia. Actualízala cada par de semanas para añadir torneos nuevos.',
+  tip_pools:'Base de mappools de torneos de la osu!wiki y Liquipedia. El botón descarga la base más reciente ya preparada desde el repositorio de osu!drill: la aplicación nunca consulta Liquipedia por su cuenta.',
   tip_add:'Mete la selección en el juego a través de osu!drill en tu ordenador. Si no lo tienes, verás cómo instalarlo con un solo comando.',
   add_wait:'primero busca mapas con el botón «Buscar mapas»',
   feedback:'Comentarios', fb_title:'Enviar comentarios',
@@ -850,7 +852,8 @@ es: {
     '<h4>Conviene saber</h4><ul>' +
     '<li>Solo es compatible con <b>osu!lazer</b>: las colecciones se escriben en su base de datos.</li>' +
     '<li>Antes de cada cambio se hace una copia de seguridad de la base, y la aplicación no escribe si tu versión de osu! usa un formato de base desconocido.</li>' +
-    '<li>Los mapas se descargan de osu.ppy.sh, osu.direct y catboy.best; los mappools de torneos salen de la osu!wiki y Liquipedia, y las colecciones de jugadores, de osu!Collector.</li>' +
+    '<li>Las reglas de osu! prohíben los programas que ayudan a jugar, y osu!drill no lo hace: no interviene en el juego en marcha, no lee su memoria, no entra en tu cuenta ni envía nada en tu nombre. Solo añade colecciones a la base del juego en tu ordenador.</li>' +
+    '<li>Los mapas se descargan del mirror osu.direct; los archivos .osu para el análisis, de ahí mismo o de osu.ppy.sh; los mappools de torneos salen de la osu!wiki y Liquipedia, y las colecciones de jugadores, de osu!Collector. La aplicación hace menos peticiones de las que permiten estos servicios y se identifica con honestidad.</li>' +
     '<li>Código abierto (MIT): <a href="{repo}" target="_blank" rel="noopener">GitHub</a>.</li></ul>'
 }
 };
@@ -1327,9 +1330,20 @@ async function sendFeedback(){
 }
 
 /* ============================== что нового ==============================
-   Новые записи - сверху, id - дата выкладки. При первом заходе список не показывается,
-   при следующих - только то, чего человек ещё не видел. Кнопка в шапке показывает всё. */
+   Новые записи - сверху, id - дата выкладки (вторая выкладка за день - «2026-09-25.2»). При первом
+   заходе список не показывается, при следующих - только то, чего человек ещё не видел. Кнопка в
+   шапке показывает всё. */
 const CHANGES = [
+  { id:'2026-09-25.2', v:'1.2.1',
+    ru:['Безопасность аккаунта: osu!drill не вмешивается в игру и не трогает твой аккаунт — только добавляет коллекции в базу игры на твоём компьютере. Об этом теперь есть пункт в «Инструкции».',
+        'Сеть: к зеркалам и сайту osu! программа обращается реже, чем разрешают их правила, и честно себя называет. К catboy.best она больше не обращается, а файлы .osu берёт с зеркала osu.direct.',
+        '«Обновить базу» в программе скачивает готовую турнирную базу за несколько секунд, а не собирает её заново с Liquipedia.'],
+    en:['Account safety: osu!drill doesn’t interfere with the game or touch your account — it only adds collections to the game database on your computer. The "Guide" now explains this.',
+        'Network: the app contacts mirrors and the osu! website less often than their rules allow and identifies itself honestly. It no longer contacts catboy.best and takes .osu files from the osu.direct mirror.',
+        '"Update database" in the app now downloads the ready-made tournament database in a few seconds instead of rebuilding it from Liquipedia.'],
+    es:['Seguridad de la cuenta: osu!drill no interviene en el juego ni toca tu cuenta; solo añade colecciones a la base del juego en tu ordenador. La «Guía» ahora lo explica.',
+        'Red: la aplicación contacta con los mirrors y la web de osu! menos de lo que permiten sus normas y se identifica con honestidad. Ya no contacta con catboy.best y toma los archivos .osu del mirror osu.direct.',
+        '«Actualizar base» en la aplicación ahora descarga en unos segundos la base de torneos ya preparada, en lugar de reconstruirla desde Liquipedia.'] },
   { id:'2026-09-25', v:'1.2.0',
     ru:['Новая вкладка «Популярные»: самые популярные песни среди любителей навыка. Выбираешь tech — получаешь карты, которые tech-игроки чаще всего кладут в свои подборки на osu!Collector (Hype, KEMOMIMI EDM SQUAD, KillerBeast, Nexta…). Разные мапсеты одной песни считаются вместе.',
         'Без навыка вкладка покажет самые играемые карты osu! в выбранных звёздах; сузить их можно жанром и словами в тегах (touhou, vocaloid…). Карты не разбираются, поэтому подборка готова за пару секунд.'],
@@ -1370,7 +1384,7 @@ function lsGet(k){ try { return localStorage.getItem(k); } catch(e){ return null
 function lsSet(k, v){ try { localStorage.setItem(k, v); } catch(e){} }
 function openChanges(since){
   CHANGES_SINCE = since || null;
-  const day = id => new Date(id + 'T12:00:00').toLocaleDateString(LANG, {day:'numeric', month:'long', year:'numeric'});
+  const day = id => new Date(id.slice(0, 10) + 'T12:00:00').toLocaleDateString(LANG, {day:'numeric', month:'long', year:'numeric'});
   $('changesbody').innerHTML = CHANGES.filter(c => !CHANGES_SINCE || c.id > CHANGES_SINCE).map(c =>
     '<h4>' + esc(c.v + ' · ' + day(c.id)) + '</h4><ul>' + (c[LANG] || c.en).map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>').join('');
   $('changes').classList.add('open');

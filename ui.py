@@ -10,6 +10,7 @@
 """
 import argparse
 import collections
+import gzip
 import http.server
 import json
 import os
@@ -233,10 +234,40 @@ def run_import(site, sid, lang, name_override=None):
     return new_job("import", target)
 
 
+POOLS_URL = "https://raw.githubusercontent.com/%s/main/data/pools.json.gz" % config.REPO
+
+
+def download_pools(log):
+    """Готовая база пулов из репозитория. С Liquipedia и osu!wiki её собирает только автор
+    (python pools.py build): если каждая установка будет обходить Liquipedia сама, это сотни
+    одинаковых запросов за одними и теми же данными, а правила её API такое запрещают."""
+    log(i18n._("Скачиваю готовую турнирную базу из репозитория..."))
+    r = net.get(POOLS_URL, timeout=120)
+    try:
+        raw = r.content if r is not None else b""
+        packed = raw[:2] == b"\x1f\x8b"
+        entries = json.loads((gzip.decompress(raw) if packed else raw).decode("utf-8"))
+    except (OSError, ValueError, EOFError):
+        raw, packed, entries = b"", False, None
+    if (not isinstance(entries, list) or len(entries) < 1000
+            or not all(isinstance(e, dict) and "bid" in e and "slot" in e for e in entries[:100])):
+        raise RuntimeError(i18n._("Не удалось скачать турнирную базу - попробуй позже"))
+    tmp = pools.POOLS_JSON + ".tmp"
+    os.makedirs(os.path.dirname(pools.POOLS_JSON), exist_ok=True)
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(entries, f, ensure_ascii=False)
+    os.replace(tmp, pools.POOLS_JSON)
+    built = int.from_bytes(raw[4:8], "little") if packed else 0
+    if built:                           # дата сборки базы записана в заголовке gzip
+        os.utime(pools.POOLS_JSON, (built, built))
+    editions = len(set((e.get("tournament"), e.get("edition")) for e in entries))
+    log(i18n._("Итого: карт в пулах — %d, турнирных изданий — %d", len(entries), editions))
+
+
 def refresh_pools(params):
     def target(job):
         i18n.set_lang(params.get("lang", "en"))
-        pools.build(force=True, log=job.log)
+        download_pools(job.log)
         return {"ok": True}
     return new_job("pools", target)
 

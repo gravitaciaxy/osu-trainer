@@ -79,6 +79,9 @@ python trainer.py --help
 
 ## Is it safe for my osu!?
 
+- Your account: osu! rules forbid programs that help you play, and osu!drill doesn't. It doesn't
+  interfere with the running game, doesn't read its memory, doesn't log into your account and sends
+  nothing on your behalf. It only adds collections to the game database on your computer.
 - `client.realm` is backed up to `backups/` before every write (the last 10 are kept).
 - Reads are read-only and work while the game is running.
 - Writes happen only if the database file format matches the supported one (currently 24 —
@@ -89,11 +92,16 @@ python trainer.py --help
 
 ## Data sources
 
-- Maps: [osu.direct](https://osu.direct) and [catboy.best](https://catboy.best) mirrors, `.osu` files
-  from [osu.ppy.sh](https://osu.ppy.sh). All requests are rate-limited.
+- Maps: the [osu.direct](https://osu.direct) mirror; `.osu` files for analysis come from it too,
+  or from [osu.ppy.sh](https://osu.ppy.sh) only when the mirror doesn't have a map.
+- Every request stays below the service's published limits (osu.direct: 120 per minute and 10 per
+  2 seconds; osu!: 60 per minute) and carries an honest User-Agent with the project page. On
+  "too many requests" all threads wait; a service that refuses access is left alone for hours.
+  catboy.best blocked us, so the app no longer contacts it.
 - Tournament pools: [osu!wiki](https://osu.ppy.sh/wiki/Tournaments) (CC BY-NC 4.0) and
-  [Liquipedia](https://liquipedia.net/osu) (CC BY-SA 3.0). A prebuilt database ships in `data/`;
-  update it from Settings. Liquipedia is queried per its
+  [Liquipedia](https://liquipedia.net/osu) (CC BY-SA 3.0). A prebuilt database ships in `data/`, and
+  "Update database" in Settings downloads the latest one from this repository, so installed apps never
+  query Liquipedia. Only `python pools.py build` does, per its
   [API terms](https://liquipedia.net/api-terms-of-use): at most one request every 2 seconds, cached.
   Star ratings, BPM, length and checksums of pool maps are taken fresh from osu.direct on every pick
   (100 maps per request), because osu! recalculates star ratings and mappers update their maps.
@@ -169,9 +177,13 @@ Node.js (в систему ничего не ставится), создаёт �
 (у каждого есть подсказка «?»), нажми «Только показать» или «Собрать коллекцию». Во время игры lazer
 откладывает импорт карт — они появятся, когда выйдешь в меню.
 
-**Безопасность:** перед каждой записью `client.realm` копируется в `backups/`; запись разрешена, только
-если формат базы совпадает с поддерживаемым; программа слушает только `127.0.0.1` и принимает подборки
-только с разрешённых сайтов после подтверждения.
+**Безопасность:** правила osu! запрещают программы, которые помогают играть, — osu!drill этого не
+делает: не вмешивается в запущенную игру, не читает её память, не входит в твой аккаунт и ничего не
+отправляет от твоего имени, а только добавляет коллекции в базу игры на твоём компьютере. Перед каждой
+записью `client.realm` копируется в `backups/`; запись разрешена, только если формат базы совпадает с
+поддерживаемым; программа слушает только `127.0.0.1` и принимает подборки только с разрешённых сайтов
+после подтверждения. К зеркалам и сайту osu! программа обращается реже, чем разрешают их правила, и
+честно себя называет; турнирную базу она скачивает готовой из репозитория, а не с Liquipedia.
 
 ---
 
@@ -218,6 +230,10 @@ lo actualiza.
 uno tiene su «?»), pulsa «Solo mostrar» o «Crear colección». Durante el juego osu!lazer pausa las
 importaciones; terminan al volver al menú.
 
-**Seguridad:** antes de cada escritura se copia `client.realm` en `backups/`; solo se escribe si el
-formato de la base coincide con el compatible; la aplicación solo escucha en `127.0.0.1` y acepta
-selecciones solo de sitios permitidos y tras tu confirmación.
+**Seguridad:** las reglas de osu! prohíben los programas que ayudan a jugar, y osu!drill no lo hace: no
+interviene en el juego en marcha, no lee su memoria, no entra en tu cuenta ni envía nada en tu nombre;
+solo añade colecciones a la base del juego en tu ordenador. Antes de cada escritura se copia
+`client.realm` en `backups/`; solo se escribe si el formato de la base coincide con el compatible; la
+aplicación solo escucha en `127.0.0.1` y acepta selecciones solo de sitios permitidos y tras tu
+confirmación. Contacta con los mirrors y la web de osu! menos de lo que permiten sus normas y se
+identifica con honestidad; la base de torneos la descarga ya preparada del repositorio, no de Liquipedia.
