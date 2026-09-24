@@ -8,6 +8,7 @@
 """
 import concurrent.futures as cf
 import gzip
+import itertools
 import json
 import os
 import re
@@ -15,6 +16,7 @@ import sys
 import threading
 import time
 
+import collector
 import config
 import liquipedia
 import net
@@ -393,6 +395,25 @@ def resolve_beatmap(bid, cache):
     return info
 
 
+def _fresh(entries):
+    """Записи пула со свежими данными карт с osu.direct, по 100 карт за запрос: (запись, [sid, режим,
+    звёзды, bpm, длина, статус, игр, md5] или None, если карты на osu! больше нет). Звёзды в кэше
+    устаревают при пересчётах рейтинга osu!, md5, BPM и длина - при обновлении карты.
+    Если зеркало не ответило, бросает OSError."""
+    for k in range(0, len(entries), 100):
+        chunk = entries[k:k + 100]
+        rows = collector.fresh_meta([e["bid"] for e in chunk])
+        if rows is None:
+            raise OSError("osu.direct не ответил")
+        for e in chunk:
+            yield e, rows[e["bid"]]
+
+
+def _edition(e):
+    """Турнир и издание: по ним чередуются турниры и считается per_tournament."""
+    return e["tournament"], e["edition"].split("/")[0]
+
+
 def _match_digits(e, digits):
     if not digits:
         return True
@@ -414,8 +435,10 @@ def text_match(info, words):
 
 def query(slots=None, mods=None, stars=(0, 12), years=None, tournaments=None, digits=None,
           tiers=None, sources=None, need=40, max_lookups=600, threads=3, progress=None,
-          per_tournament=3, genres=None, words=None, bpm=None, length=None):
-    """Карты турнирных пулов под слоты/звёзды/рейтинг (свежие турниры первыми, по кругу)."""
+          per_tournament=3, genres=None, words=None, bpm=None, length=None, log=_log):
+    """Карты турнирных пулов под слоты/звёзды/рейтинг (свежие турниры первыми, по кругу).
+    Звёзды, md5, BPM и длина - свежие с osu.direct; название, жанр и теги - из кэша или запросом
+    на карту, только для подошедших по звёздам."""
     pool = load()
     slots = set(s.upper() for s in slots) if slots else None
     mods = set(m.upper() for m in mods) if mods else None
@@ -448,7 +471,7 @@ def query(slots=None, mods=None, stars=(0, 12), years=None, tournaments=None, di
         if e["bid"] in seen_bid:
             continue
         seen_bid.add(e["bid"])
-        key = (e["tournament"], e["edition"].split("/")[0])
+        key = _edition(e)
         if key not in groups:
             groups[key] = []
             order.append(key)
@@ -466,33 +489,50 @@ def query(slots=None, mods=None, stars=(0, 12), years=None, tournaments=None, di
 
     cache = _bm_cache()
     out, looked, used = [], 0, {}
+
+    def fits(row):
+        if not row or row[1] != 0 or not row[7]:
+            return False                        # карты на osu! больше нет или она не osu!standard
+        return (stars[0] <= row[2] <= stars[1] and (not bpm or bpm[0] <= row[3] <= bpm[1])
+                and (not length or length[0] <= row[4] <= length[1]))
+
+    def full(e):
+        return bool(per_tournament) and used.get(_edition(e), 0) >= per_tournament
+
     limit = min(len(ordered), max_lookups)
-    for start in range(0, limit, 24):
-        chunk = ordered[start:min(start + 24, limit)]
-        with cf.ThreadPoolExecutor(max_workers=threads) as ex:
-            infos = list(ex.map(lambda e: resolve_beatmap(e["bid"], cache), chunk))
+    checked = _fresh(ordered[:limit])
+    # по 25 карт - четыре порции на запрос к зеркалу: если оно не ответит, полученные карты не пропадут
+    for _start in range(0, limit, 25):
+        try:
+            chunk = list(itertools.islice(checked, 25))
+        except OSError:
+            if not out:
+                raise RuntimeError(_("Зеркало osu.direct не отвечает - попробуй позже"))
+            log(_("  зеркало osu.direct не отвечает - остальные карты пулов пропущены"))
+            break
         looked += len(chunk)
-        for e, info in zip(chunk, infos):
-            if not info or info.get("mode") != 0 or not info.get("md5"):
+        todo = [(e, row) for e, row in chunk if fits(row) and not full(e)]
+        with cf.ThreadPoolExecutor(max_workers=threads) as ex:
+            infos = list(ex.map(lambda e: resolve_beatmap(e["bid"], cache), [e for e, _row in todo]))
+        for (e, row), info in zip(todo, infos):
+            if not info:
                 continue
-            if not (stars[0] <= info["sr"] <= stars[1]):
-                continue
+            _sid, _mode, sr, map_bpm, map_length, _status, playcount, md5 = row
+            # свежие данные заменяют и записанные в кэш при первом запросе карты
+            info.update(sr=sr, md5=md5, bpm=map_bpm, length=map_length, playcount=playcount)
             if genres and info.get("genre") not in genres:
                 continue
             if not text_match(info, words):
                 continue
-            if bpm and not (bpm[0] <= (info.get("bpm") or 0) <= bpm[1]):
+            if full(e):
                 continue
-            if length and not (length[0] <= (info.get("length") or 0) <= length[1]):
-                continue
-            key = (e["tournament"], e["edition"].split("/")[0])
-            if per_tournament and used.get(key, 0) >= per_tournament:
-                continue
+            key = _edition(e)
             used[key] = used.get(key, 0) + 1
             item = dict(e)
             item.update(info)
             out.append(item)
-        _save_bm(cache)
+        if todo:
+            _save_bm(cache)
         if progress:
             progress(looked, limit, len(out))
         if len(out) >= need:
@@ -518,7 +558,8 @@ def stats():
 
 
 def warm(limit=None, log=_log):
-    """Заранее запрашивает данные всех карт пулов (звёзды, жанр). Около 90 карт в минуту."""
+    """Заранее запрашивает данные всех карт пулов (название, жанр, теги), чтобы подбор не спрашивал
+    их по одной. Звёзды подбор всё равно берёт свежие. Около 90 карт в минуту."""
     cache = _bm_cache()
     todo = []
     seen = set()

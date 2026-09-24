@@ -95,6 +95,8 @@ python trainer.py --help
   [Liquipedia](https://liquipedia.net/osu) (CC BY-SA 3.0). A prebuilt database ships in `data/`;
   update it from Settings. Liquipedia is queried per its
   [API terms](https://liquipedia.net/api-terms-of-use): at most one request every 2 seconds, cached.
+  Star ratings, BPM, length and checksums of pool maps are taken fresh from osu.direct on every pick
+  (100 maps per request), because osu! recalculates star ratings and mappers update their maps.
 - Player collections: [osu!Collector](https://osucollector.com) — public collections whose names
   mention a skill; map details come from osu.direct. A prebuilt index ships in `data/`, so the app
   itself never queries osu!Collector; `python collector.py build` refreshes the index (about 1.5 hours:

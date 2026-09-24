@@ -437,7 +437,7 @@ def pick_tournament(a, stars, log):
                                per_tournament=a.per_tournament,
                                genres=[int(g) for g in csv(a.genres) if g.isdigit()] or None,
                                words=[w.lower() for w in csv(a.words)] or None,
-                               bpm=bpm, length=length)
+                               bpm=bpm, length=length, log=log)
     log(_("  карт в выбранных слотах: %d, отобрано: %d", total, len(found)))
     out = []
     for e in found:

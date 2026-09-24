@@ -43,6 +43,8 @@ EN = {
     "Ищу в турнирных пулах: %s": "Searching tournament pools: %s",
     "  проверено %d/%d карт пула, подходящих: %d": "  checked %d/%d pool maps, matching: %d",
     "  карт в выбранных слотах: %d, отобрано: %d": "  maps in selected slots: %d, selected: %d",
+    "  зеркало osu.direct не отвечает - остальные карты пулов пропущены":
+        "  the osu.direct mirror is not responding - skipping the rest of the pool maps",
     "Нужен навык, карты-образцы или турнирные слоты": "Pick a skill, reference maps or tournament slots",
     "Не найдена папка osu!lazer (client.realm). Укажи её в настройках.":
         "osu!lazer data folder (client.realm) not found. Set it in the settings.",
@@ -128,6 +130,8 @@ ES = {
     "Ищу в турнирных пулах: %s": "Buscando en los mappools de torneos: %s",
     "  проверено %d/%d карт пула, подходящих: %d": "  revisados %d/%d mapas del pool, coinciden: %d",
     "  карт в выбранных слотах: %d, отобрано: %d": "  mapas en los slots elegidos: %d, seleccionados: %d",
+    "  зеркало osu.direct не отвечает - остальные карты пулов пропущены":
+        "  el mirror osu.direct no responde: se omite el resto de mapas de los pools",
     "Нужен навык, карты-образцы или турнирные слоты": "Elige una habilidad, mapas de referencia o slots de torneo",
     "Не найдена папка osu!lazer (client.realm). Укажи её в настройках.":
         "No se encontró la carpeta de datos de osu!lazer (client.realm). Indícala en los ajustes.",
