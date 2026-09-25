@@ -372,7 +372,7 @@ def coach_post(path, body):
             coach.random_stop()
             return {"ok": True}
         skill = str(body.get("skill") or "") or None
-        if skill and skill != "any" and skill not in coach.skills.SKILLS:
+        if skill and skill not in ("any", "ladders") and skill not in coach.skills.SKILLS:
             raise RuntimeError("Нет такого навыка")
         return {"id": coach_job(lambda log: coach.random_next(log, skill)).id}
     if path == "/api/coach/apikeys":

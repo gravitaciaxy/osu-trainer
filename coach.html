@@ -268,9 +268,21 @@ function escapeBox(key){
 function buildTraining(key){ startJob('/api/coach/training', {ladder:key}, 'Собираю разминку и тренировку'); }
 function finishTraining(id){ if (confirm('Закончить тренировку? Несыгранные карты не будут засчитаны.')) post('/api/coach/training/finish', {id}); }
 
+// зачёт случайной карты в лестницу: строка для карточки и значок для истории
+function creditLine(k){
+  if (!k.counted) return esc(k.title) + ' — ' + (k.map_step < k.step ? 'карта ниже твоей ступени, не в зачёт' : 'карта выше твоей ступени, порог не взят — не в зачёт');
+  if (k.up) return '<b class="ok">' + esc(k.title) + ': ступень ' + (k.step + 1) + ' сдана, теперь ступень ' + (k.step + 2) + '</b>';
+  return '<b>' + esc(k.title) + '</b>, ступень ' + (k.step + 1) + ': ' + (k.ok ? '<span class="ok">порог взят</span>' : '<span class="bad">порог не взят</span>') +
+    ' · на ступени ' + k.got + ' из ' + S.need + ' нужных (считаются последние ' + S.of + ' карт)';
+}
+function creditBadges(ks){
+  return (ks || []).filter(k => k.counted).map(k => '<span class="badge ' + (k.ok ? 'ok' : 'bad') + '">' + esc(k.title) +
+    (k.up ? ' ↑' + (k.step + 2) : k.ok ? ' +' : ' ✗') + '</span>').join(' ');
+}
 function randomCard(r){
   if (!r) return '';
   const opts = '<option value="any"' + (r.skill === 'any' ? ' selected' : '') + '>любой навык</option>' +
+    '<option value="ladders"' + (r.skill === 'ladders' ? ' selected' : '') + '>навык моих лестниц</option>' +
     r.skills.map(s => '<option value="' + s.key + '"' + (r.skill === s.key ? ' selected' : '') + '>' + esc(s.title) + '</option>').join('');
   const c = r.current;
   let h = '<div class="card" style="grid-column:1/-1"><h2>Случайная карта' + (r.auto ? ' <span class="badge acc">идёт</span>' : '') + '</h2>';
@@ -280,24 +292,31 @@ function randomCard(r){
       '<a href="https://osu.ppy.sh/b/' + (+c.bid) + '" target="_blank" rel="noopener">↗</a></p>' +
       '<p>Код: ' + codeChip(c, true) + ' — нажми, чтобы скопировать, и вставь в поиск в выборе карты: lazer найдёт её по номеру. ' +
       'Если поиск пока пустой — lazer ещё импортирует карту, подожди пару секунд.</p>' +
+      (c.ladder ? '<p>Ступень ' + (c.ladder_step + 1) + ' твоей лестницы <b>' + esc(c.ladder_title) + '</b> (' + esc(c.ladder_label) + '): возьмёшь порог — пойдёт в зачёт.</p>' : '') +
       '<p class="muted">' + esc(c.why) + '. Ещё она лежит в коллекции «' + esc(r.collection) + '» — там только эта карта. ' +
       'Сыграй её: результат появится здесь через несколько секунд после конца карты, и сразу будет следующая.</p>';
   } else if (c && c.result){
     const x = c.result;
-    h += '<p>Сыграно: <b>' + mapName(c) + '</b> <span class="badge">' + esc(c.skill_title) + '</span> — <b>' + pct(x.acc, 2) + '</b> · ' + x.misses + ' пр.' +
+    h += '<p>Сыграно: <b>' + mapName(c) + '</b> ' + mods(x.mods) + ' — <b>' + pct(x.acc, 2) + '</b> · ' + x.misses + ' пр.' +
       (x.weak && x.weak.length ? ' · слабее всего: ' + x.weak.map(esc).join(', ') : '') +
-      ' · <a href="#" onclick="openPlay(\'' + x.id + '\');return false">разбор</a></p>' + (r.auto ? '' : '<p class="muted">Режим остановлен.</p>');
+      ' · <a href="#" onclick="openPlay(\'' + x.id + '\');return false">разбор</a></p>' +
+      (x.kind && x.kind.length ? '<p class="muted">Как сыграна' + (x.mods && x.mods.length ? ', с модами' : '') + ': ' + x.kind.map(esc).join(', ') + '</p>' : '') +
+      (x.ladders && x.ladders.length ? '<ul class="plain">' + x.ladders.map(k => '<li>' + creditLine(k) + '</li>').join('') + '</ul>' : '') +
+      (r.auto ? '' : '<p class="muted">Режим остановлен.</p>');
   } else {
     h += '<p>Дам одну новую карту случайного навыка около твоего уровня (~' + num(S.comfort, 2) + '★), которую ты не играл неделю. ' +
-      'Сыграл — сразу следующая, и так сколько хочешь.</p>';
+      'Сыграл — сразу следующая, и так сколько хочешь.</p><p class="muted">Если на навык есть твоя лестница, карта будет с твоей ступени. ' +
+      'Карты идут в зачёт лестниц, как в тренировке: порог взят на ' + S.need + ' из последних ' + S.of + ' карт ступени — ступень сдана. ' +
+      'Моды учитываются: с DT, HR или HD карта считается такой, какой ты её сыграл.</p>';
   }
   h += '<div class="actions"><select id="rndskill">' + opts + '</select>' +
     '<button class="btn go"' + (r.preparing ? ' disabled' : '') + ' onclick="startJob(\'/api/coach/random\', {action:\'next\', skill:$(\'rndskill\').value}, \'Ищу случайную карту\')">' +
     (c && !c.result ? 'Другую' : 'Дай карту') + '</button>' +
     (r.auto ? '<button class="btn" onclick="post(\'/api/coach/random\', {action:\'stop\'})">Стоп</button>' : '') + '</div>';
-  if (r.history.length) h += '<h3>Последние сыгранные (' + r.played + ')</h3><div class="tablewrap"><table><tr><th>Карта</th><th>Навык</th><th class="num">★</th><th class="num">Результат</th></tr>' +
-    r.history.map(x => '<tr class="click" onclick="openPlay(\'' + x.result.id + '\')"><td>' + mapName(x) + ' ' + codeChip(x) + '</td><td class="muted">' + esc(x.skill_title) + '</td><td class="num">' + num(x.sr, 2) + '</td>' +
-      '<td class="num">' + pct(x.result.acc, 2) + ' · ' + x.result.misses + ' пр.</td></tr>').join('') + '</table></div>';
+  if (r.history.length) h += '<h3>Последние сыгранные (' + r.played + ')</h3><div class="tablewrap"><table><tr><th>Карта</th><th>Как сыграна</th><th class="num">★</th><th class="num">Результат</th><th>Зачёт</th></tr>' +
+    r.history.map(x => '<tr class="click" onclick="openPlay(\'' + x.result.id + '\')"><td>' + mapName(x) + ' ' + codeChip(x) + '</td>' +
+      '<td class="muted">' + esc((x.result.kind && x.result.kind.length ? x.result.kind : [x.skill_title]).join(', ')) + ' ' + mods(x.result.mods) + '</td><td class="num">' + num(x.sr, 2) + '</td>' +
+      '<td class="num">' + pct(x.result.acc, 2) + ' · ' + x.result.misses + ' пр.</td><td>' + (creditBadges(x.result.ladders) || '<span class="muted">—</span>') + '</td></tr>').join('') + '</table></div>';
   return h + '</div>';
 }
 function renderToday(){
@@ -372,7 +391,12 @@ function renderLadders(){
     h += '<div class="steps">' + l.steps.map((s, i) => '<span class="step ' + (i < l.step ? 'done' : i === l.step ? 'cur' : 'lock') + '">' +
       (i < l.step ? '✓ ' : i > l.step ? '🔒 ' : '') + esc(s) + '</span>').join('') + '</div>';
     h += '<p class="muted">' + esc(thrText(l.threshold)) + (l.fails_in_row ? ' Не сдано подряд: ' + l.fails_in_row + '.' : '') + '</p>';
-    if (l.free && l.free.n) h += '<p>Вне тренировок (соло и мульти, ' + l.free.days + ' дней) на этой ступени: ' + l.free.n + ' карт, порог взят на ' + l.free.ok +
+    const rw = l.random.window;
+    h += rw.length ? '<p>Случайные карты на этой ступени: ' + rw.map(x => '<span class="' + (x.ok ? 'ok' : 'bad') + '" title="' + esc(x.title + ' [' + x.diff + '] · ' + x.value) + '">' + (x.ok ? '✓' : '✗') + '</span>').join(' ') +
+        ' — порог взят на <b class="' + (l.random.ok >= S.need ? 'ok' : '') + '">' + l.random.ok + '</b> из ' + S.need + ' нужных (считаются последние ' + S.of + ').</p>'
+      : '<p class="muted">Случайные карты этой ступени тоже идут в зачёт: порог на ' + S.need + ' из последних ' + S.of + ' — ступень сдана.</p>';
+    if (l.random.ups) h += '<p class="muted">Ступеней сдано случайными картами: ' + l.random.ups + '.</p>';
+    if (l.free && l.free.n) h += '<p>Вне тренировок и случайных карт (соло и мульти, ' + l.free.days + ' дней) на этой ступени: ' + l.free.n + ' карт, порог взят на ' + l.free.ok +
       ', средняя точность ' + pct(l.free.acc) + '. <span class="muted">В зачёт ступени не идёт — только показывает, как ты тянешь её в обычной игре.</span></p>';
     if (l.escape) h += escapeBox(l.key);
     if (l.history.length){
@@ -484,14 +508,16 @@ function playDetail(v){
 }
 function skillsetBlock(ss){
   if (!ss) return '';
-  let h = '<h3>Что это за карта</h3><p>' + (ss.main.length ? ss.main.map(x => '<span class="badge acc">' + esc(x.title) + ' ' + x.score + '</span>').join(' ')
+  let h = '<h3>Что это за карта' + (ss.mods ? ' — с твоими модами' : '') + '</h3><p>' + (ss.main.length ? ss.main.map(x => '<span class="badge acc">' + esc(x.title) + ' ' + x.score + '</span>').join(' ')
     : '<span class="muted">смешанная — ни один навык не выражен сильно</span>') + '</p>';
   const facts = ['BPM ' + num(ss.bpm)];
+  if (ss.mods) facts.unshift(ss.mods + ': AR ' + num(ss.ar, 1) + ', CS ' + num(ss.cs, 1) + ', OD ' + num(ss.od, 1));
   if (ss.stream_ratio >= 0.05) facts.push('streams ' + pct(ss.stream_ratio, 0) + ' нот, ' + num(ss.stream_bpm) + ' BPM, самая длинная цепочка ' + ss.max_run);
   if (ss.burst_ratio >= 0.05) facts.push('bursts ' + pct(ss.burst_ratio, 0) + ' нот, ' + num(ss.burst_bpm) + ' BPM');
   if (ss.alt_ratio >= 0.05) facts.push('alt ' + pct(ss.alt_ratio, 0) + ' промежутков');
   facts.push('прыжки ' + pct(ss.aim_share, 0) + ' промежутков');
-  h += '<p class="muted">' + facts.map(esc).join(' · ') + '. Оценки навыков — те же формулы, по которым подбор ищет карты.</p>';
+  h += '<p class="muted">' + facts.map(esc).join(' · ') + '. Оценки навыков — те же формулы, по которым подбор ищет карты' +
+    (ss.mods ? ', но для карты с модами попытки: DT и HT меняют скорость, HR и EZ — CS, AR и OD, с HD карта ещё и на чтение' : '') + '.</p>';
   if (ss.fits.length) h += '<ul class="plain">' + ss.fits.map(f => '<li><b>' + esc(f.title) + '</b>: ступень ' + (f.step + 1) + ' — ' + esc(f.label) + ' (у карты ' + esc(f.value) + ')' +
     (f.yours == null ? '' : f.yours === f.step ? ' — <span class="ok">как раз твоя ступень</span>' : f.step > f.yours ? ' — <span class="warn">выше твоей ступени ' + (f.yours + 1) + '</span>' : ' — ниже твоей ступени ' + (f.yours + 1)) + '</li>').join('') + '</ul>';
   return h;

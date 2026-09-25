@@ -223,24 +223,47 @@ def analysis(s):
 _metrics_cache = {}
 
 
-def map_metrics(file_hash):
-    """Метрики карты (как у подбора) по файлу .osu из игры - для скиллсета и стартовой ступени."""
+def map_metrics(file_hash, mods=None, key=""):
+    """Метрики карты (как у подбора) по файлу .osu из игры - для скиллсета и стартовой ступени.
+    С mods - метрики карты с модами попытки (key - их подпись в кэше)."""
     cache = _metrics_cache
     if not cache:
         cache.update(_load(METRICS_JSON, {}) or {})
-    if file_hash in cache and (cache[file_hash] is None or "alt_ratio" in cache[file_hash]):
-        return cache[file_hash]                 # записи до появления bursts/alt считаются заново
+    ck = file_hash + ("|" + key if key else "")
+    if ck in cache and (cache[ck] is None or "alt_ratio" in cache[ck]):
+        return cache[ck]                        # записи до появления bursts/alt считаются заново
     path = _files(file_hash)
     m = None
     if path and os.path.exists(path):
         try:
             with open(path, encoding="utf-8", errors="replace") as f:
-                m = analyze.metrics(f.read())
+                m = analyze.metrics(f.read(), mods)
         except Exception:
             m = None
-    cache[file_hash] = m
+    cache[ck] = m
     _save(METRICS_JSON, cache)
     return m
+
+
+def play_mods(s):
+    """Моды попытки, которые меняют саму карту: скорость, HR/EZ, Difficulty Adjust и HD (читать труднее).
+    -> (моды для analyze.metrics или None, подпись для кэша, как назвать)."""
+    mi = replay.mod_info(s.get("mods"))
+    mods = dict(rate=round(mi["rate"], 3), hr=mi["hr"], ez=mi["ez"], da=mi["da"] or None, hidden="HD" in mi["acronyms"])
+    if mods["rate"] == 1.0 and not (mods["hr"] or mods["ez"] or mods["da"] or mods["hidden"]):
+        return None, "", ""
+    names = [a for a in mi["acronyms"] if a in DIFF_MODS or a == "HD"]
+    if mods["rate"] not in (1.0, 1.5, 0.75):
+        names.append("×%g" % mods["rate"])
+    return mods, json.dumps(mods, sort_keys=True), " ".join(names)
+
+
+def play_metrics(s):
+    """Метрики карты такой, какой её сыграли: с DT/HT (и их скоростью), HR/EZ, Difficulty Adjust и HD."""
+    if not s.get("fileHash"):
+        return None
+    mods, key, _name = play_mods(s)
+    return map_metrics(s["fileHash"], mods, key)
 
 
 def scores():
@@ -286,6 +309,11 @@ def mods_ok(s, mod):
     return not (ms & DIFF_MODS)
 
 
+def fair(s):
+    """Попытка без автоигры, relax/autopilot и модов, которые двигают круги - такую можно засчитывать."""
+    return not replay.mod_info(s.get("mods"))["unsupported"]
+
+
 def skill_scores(m):
     """Оценки навыков карты 0..100 - те же формулы, по которым подбор ищет карты."""
     out = []
@@ -310,19 +338,18 @@ def skillset(s):
 
 
 def _skillset(s):
-    m = map_metrics(s["fileHash"]) if s.get("fileHash") else None
+    """Скиллсет карты с модами попытки: с DT это другие streams и прыжки, с HR - меньше круги и выше AR/OD,
+    с HD карта ещё и на чтение. Лестницы без мода принимают и попытки с модами - по их настоящим цифрам."""
+    m = play_metrics(s)
     if not m:
         return None
     sc = skill_scores(m)
     main = [x for x in sc if x["main"]][:3]
     keys = {x["key"] for x in main}
-    ms = set(s["mods_list"])
     fits = []
     for key, lad in LADDERS.items():
         mod = lad.get("mod")
-        if mod and not (mod in ms or (mod == "DT" and "NC" in ms)):
-            continue
-        if not mod and ms & DIFF_MODS:
+        if not fair(s) or (mod and not mods_ok(s, mod)):
             continue
         if not (keys & set(lad["skill"].split(","))) or not meets(lad, m):
             continue
@@ -330,9 +357,10 @@ def _skillset(s):
         step = next((i for i in range(len(lad["steps"])) if in_step(lad, i, v)), None)
         if step is not None:
             fits.append(dict(ladder=key, title=lad["title"], step=step, label=step_label(lad, step), value=_fmt(lad, v)))
-    return dict(main=main, scores=sc, fits=fits, bpm=m["bpm"], length=m["length"], stream_ratio=m["stream_ratio"],
-                stream_bpm=m["stream_bpm"], burst_ratio=m.get("burst_ratio"), burst_bpm=m.get("burst_bpm"),
-                alt_ratio=m.get("alt_ratio"), max_run=m["max_run"], aim_share=m["aim_share"])
+    return dict(main=main, scores=sc, fits=fits, mods=play_mods(s)[2], bpm=m["bpm"], length=m["length"],
+                stream_ratio=m["stream_ratio"], stream_bpm=m["stream_bpm"], burst_ratio=m.get("burst_ratio"),
+                burst_bpm=m.get("burst_bpm"), alt_ratio=m.get("alt_ratio"), max_run=m["max_run"],
+                aim_share=m["aim_share"], ar=round(m["ar"], 1), cs=round(m["cs"], 1), od=round(m["od"], 1))
 
 
 def row(s, a=None):
@@ -649,11 +677,12 @@ def play_view(pid):
 # -------------------------------------------------------------- лестницы ----
 
 def param_value(lad, m):
+    """Главный параметр ступени. У метрик попытки с модами (play_metrics) скорость и CS уже пересчитаны."""
     p = lad["param"]
     if p == "dt_stream_bpm":
-        return m["stream_bpm"] * 1.5
+        return m["stream_bpm"] * (1.0 if m.get("rate", 1.0) > 1.0 else 1.5)
     if p == "hr_cs":
-        return min(10.0, m["cs"] * 1.3)
+        return m["cs"] if m.get("hr") else min(10.0, m["cs"] * 1.3)
     return m.get(p, 0)
 
 
@@ -706,9 +735,11 @@ def initial_step(lad, sc):
     now = time.time()
     vals = []
     for s in sc:
-        if now - s["ts"] > 60 * DAY or s["acc"] < 0.93 or s["rank"] < 0 or not mods_ok(s, lad.get("mod")):
+        if now - s["ts"] > 60 * DAY or s["acc"] < 0.93 or s["rank"] < 0 or not fair(s):
             continue
-        m = map_metrics(s["fileHash"]) if s.get("fileHash") else None
+        if lad.get("mod") and not mods_ok(s, lad["mod"]):
+            continue
+        m = play_metrics(s)                 # с модами попытки: DT-попытка - это её настоящие BPM
         if m and meets(lad, m):
             vals.append(param_value(lad, m))
     if not vals:
@@ -929,18 +960,24 @@ def ladder_view(st, key):
                             misses=round(statistics.fmean(r["misses"] for r in res), 1) if res else None,
                             ur=round(statistics.fmean(r["ur"] for r in res if r.get("ur")), 1)
                             if any(r.get("ur") for r in res) else None))
+    rnd = ld.get("random", [])
+    window = [x for x in rnd if x["step"] == ld["step"]][-OF:]
     return dict(key=key, title=lad["title"], mod=lad.get("mod"), step=ld["step"], best=ld.get("best", ld["step"]),
                 start=ld.get("start", 0), steps=[step_label(lad, i) for i in range(len(lad["steps"]))],
                 threshold=threshold(st, key), escape=ld.get("escape"), fails_in_row=ld.get("fails_in_row", 0),
                 active=st["active"] == key, history=history, free=free_play(st, key),
+                random=dict(window=window, ok=sum(1 for x in window if x["ok"]), total=len(rnd),
+                            ups=ld.get("random_ups", 0)),
                 open=next((t for t in reversed(trs) if t["status"] == "open"), None))
 
 
 def free_play(st, key, days=14):
-    """Карты текущей ступени, сыгранные вне тренировок (соло и мультиплеер): в зачёт не идут,
-    но показывают, как ты тянешь эту ступень в обычной игре."""
+    """Карты текущей ступени, сыгранные вне тренировок и случайных карт (соло и мультиплеер): в зачёт
+    не идут, но показывают, как ты тянешь эту ступень в обычной игре."""
     lad, step, thr = LADDERS[key], st["ladders"][key]["step"], threshold(st, key)
     in_trainings = {m["md5"] for t in st["trainings"] if t["ladder"] == key for m in t["maps"]}
+    r = st.get("random") or {}
+    in_trainings |= {h["md5"] for h in r.get("history", []) + ([r["current"]] if r.get("current") else [])}
     now, out = time.time(), []
     for s in scores():
         if now - s["ts"] > days * DAY or s["md5"] in in_trainings or s["rank"] < 0:
@@ -970,12 +1007,19 @@ def random_state(st):
     return r
 
 
-def random_pick(skill, exclude, log):
+def on_step(target, m):
+    lad, step = target
+    return meets(lad, m) and in_step(lad, step, param_value(lad, m))
+
+
+def random_pick(skill, exclude, log, steps=None):
     """Случайная новая карта навыка (или случайного навыка) около твоего уровня: кандидаты из подборок
-    игроков и поиска, проверяются разбором по одному, пока не найдётся карта с явным навыком."""
+    игроков и поиска, проверяются разбором по одному, пока не найдётся карта с явным навыком. Если на навык
+    есть твоя лестница, лучше карта её ступени - тогда она пойдёт в зачёт. -> (навык, карта, на ступени ли)."""
+    steps = steps or {}
     c = comfort_stars()
     stars = (max(1.0, round(c - 0.5, 2)), round(c + 0.5, 2))
-    keys = [skill] if skill in skills.SKILLS else list(skills.SKILLS)
+    keys = [skill] if skill in skills.SKILLS else list(steps) if skill == "ladders" and steps else list(skills.SKILLS)
     random.shuffle(keys)
     index = collector.load()
     for key in keys[:4]:
@@ -997,10 +1041,23 @@ def random_pick(skill, exclude, log):
         cands = [x for x in cands if x.get("md5") and x["md5"] not in exclude]
         random.shuffle(cands)
         scorer = trainer.make_scorer([cfg], None, a)
+        target = steps.get(key)
+        if target:
+            log("  есть твоя лестница — ищу карту ступени %d: %s" % (target[1] + 1, step_label(*target)))
+        fallback, extra = None, 0
         for cand in cands[:25]:
+            if fallback and extra >= 8:     # карта навыка уже есть - ступень ищем недолго
+                break
+            extra += 1 if fallback else 0
             res = trainer.score_candidate(cand, scorer, a)
-            if res and res["score"] >= cfg["min_score"]:
-                return key, res
+            if not res or res["score"] < cfg["min_score"]:
+                continue
+            if not target or on_step(target, res["metrics"]):
+                return key, res, bool(target)
+            fallback = fallback or res
+        if fallback:
+            log("  карты ровно твоей ступени среди кандидатов нет — даю просто карту навыка")
+            return key, fallback, False
         log("  подходящей новой карты не нашлось — пробую другой навык")
     raise RuntimeError("Не нашёл подходящей новой карты — попробуй ещё раз")
 
@@ -1033,14 +1090,19 @@ def random_next(log, skill=None):
         exclude = played_recently(scores()) | reserved_md5(st) | {h["md5"] for h in r["history"]}
         if r["current"]:
             exclude.add(r["current"]["md5"])
+        steps = {k: (LADDERS[k], ld["step"]) for k, ld in st["ladders"].items()
+                 if k in skills.SKILLS and LADDERS.get(k, {}).get("skill") == k}
         save_state(st)
     pick = None
     try:
         for _attempt in range(3):
-            key, m = random_pick(skill, exclude, log)
+            key, m, stepped = random_pick(skill, exclude, log, steps)
             pick = dict(bid=m["bid"], sid=m["sid"], md5=m["md5"], sr=m["sr"], title=m["title"], artist=m["artist"],
                         diff=m["diff"], skill=key, skill_title=skills.SKILLS[key]["title"], score=m["score"],
                         why=m.get("why", ""), bpm=m["metrics"]["bpm"], length=m["metrics"]["length"], given=time.time())
+            if stepped:
+                pick.update(ladder=key, ladder_title=LADDERS[key]["title"], ladder_step=steps[key][1],
+                            ladder_label=step_label(*steps[key]))
             if _deliver(pick, log):
                 break
             log("  не скачалась — ищу другую")
@@ -1061,6 +1123,9 @@ def random_next(log, skill=None):
                 r["history"] = r["history"][-60:]
             save_state(st)
     log("Готово: %s — %s [%s], %.2f★ · %s." % (pick["artist"], pick["title"], pick["diff"], pick["sr"], pick["skill_title"]))
+    if pick.get("ladder"):
+        log("Ступень %d лестницы %s (%s): возьмёшь порог — пойдёт в зачёт." % (
+            pick["ladder_step"] + 1, pick["ladder_title"], pick["ladder_label"]))
     log("Код для поиска в выборе карты: %s (или коллекция «%s»)" % (pick["bid"], RANDOM_COLLECTION))
     return pick
 
@@ -1072,19 +1137,64 @@ def random_stop():
         save_state(st)
 
 
+def credit_random(st, s):
+    """Случайная карта в зачёт лестниц - по скиллсету с модами попытки. Карта твоей ступени идёт в зачёт
+    как карта тренировки: из последних OF таких карт порог взят на NEED - ступень сдана. Карта выше
+    ступени засчитывается, только если порог взят (провал на ней о твоей ступени ничего не говорит),
+    ниже - не засчитывается. Проиграть случайными картами нельзя: несданные тренировки они не копят."""
+    out = []
+    ss = skillset(s)
+    for f in (ss["fits"] if ss else []):
+        key, ld = f["ladder"], st["ladders"].get(f["ladder"])
+        if not ld or s["ts"] < ld.get("created", 0):
+            continue                        # до лестницы - по таким попыткам выбрана стартовая ступень
+        lad, step, log = LADDERS[key], ld["step"], ld.setdefault("random", [])
+        if any(x["id"] == s["id"] for x in log):
+            continue
+        ok = passed(s, threshold(st, key))
+        item = dict(ladder=key, title=lad["title"], step=step, map_step=f["step"], ok=ok)
+        if f["step"] < step or (f["step"] > step and not ok):
+            out.append(dict(item, counted=False))
+            continue
+        log.append(dict(id=s["id"], step=step, ok=ok, ts=s["ts"], title=s["title"], diff=s["diff"], value=f["value"]))
+        del log[:-60]
+        window = [x for x in log if x["step"] == step][-OF:]
+        got = sum(1 for x in window if x["ok"])
+        up = got >= NEED and step < len(lad["steps"]) - 1
+        if up:
+            ld["step"] = step + 1
+            ld["best"] = max(ld.get("best", 0), ld["step"])
+            ld["fails_in_row"], ld["escape"] = 0, False
+            ld["random_ups"] = ld.get("random_ups", 0) + 1
+        out.append(dict(item, counted=True, got=got, played=len(window), up=up))
+    return out
+
+
 def evaluate_random(st, sc):
     r = st.get("random")
-    cur = r and r.get("current")
-    if not cur or cur.get("result"):
+    if not r:
         return
-    for s in sc:
-        if s["md5"] == cur["md5"] and s["ts"] >= cur["given"] - 5:
-            rw = row(s)
-            cur["result"] = dict(id=s["id"], acc=round(s["acc"], 4), misses=s["misses"], rank=s["rank"], ts=s["ts"],
-                                 ur=rw.get("ur"), weak=[TAG_INFO.get(t, (t,))[0] for t in rw.get("weak", [])])
-            r["history"].append(dict(cur))
-            r["history"] = r["history"][-60:]
-            break
+    cur = r.get("current")
+    if cur and not cur.get("result"):
+        for s in sc:
+            if s["md5"] == cur["md5"] and s["ts"] >= cur["given"] - 5:
+                rw = row(s)
+                cur["result"] = dict(id=s["id"], acc=round(s["acc"], 4), misses=s["misses"], rank=s["rank"], ts=s["ts"],
+                                     ur=rw.get("ur"), weak=[TAG_INFO.get(t, (t,))[0] for t in rw.get("weak", [])])
+                r["history"].append(dict(cur))
+                r["history"] = r["history"][-60:]
+                break
+    # зачёт лестниц и скиллсет с модами - один раз на попытку (и для сыгранных до появления зачёта)
+    by_id, done = {s["id"]: s for s in sc}, {}
+    for h in r["history"] + ([cur] if cur else []):
+        res = h.get("result")
+        s = res and by_id.get(res["id"])
+        if not s or "ladders" in res:
+            continue
+        if s["id"] not in done:
+            done[s["id"]] = (credit_random(st, s), row(s)["kind"])
+        res["ladders"], res["kind"] = done[s["id"]]
+        res["mods"] = s["mods_list"]
 
 
 def random_pending():

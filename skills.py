@@ -79,7 +79,11 @@ def _fingercontrol(m):
 
 def _reading(m):
     s = 55 * sc(9.4 - m["ar"], 0.2, 1.8) + 25 * sc(m["nps"], 4, 8) + 20 * sc(m["rhythm_entropy"], 1.8, 3.2)
-    return s, _("AR %.1f, %.1f нот/с", m["ar"], m["nps"])
+    why = _("AR %.1f, %.1f нот/с", m["ar"], m["nps"])
+    if m.get("hidden"):     # сыграно с HD (разбор тренера): круга подхода нет, ноты гаснут до удара - и чем ниже AR, тем труднее
+        s = min(100.0, s + 25 + 10 * clamp((9.5 - m["ar"]) / 2))
+        why += " + HD"
+    return s, why
 
 
 def _precision(m):

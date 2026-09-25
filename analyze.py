@@ -100,11 +100,45 @@ def _sv_points(timing):
     return [-100.0 / beat for _, beat, uninh in timing if not uninh and beat < 0]
 
 
-def metrics(text):
-    """Возвращает словарь объективных метрик карты."""
+def _ar_ms(ar):
+    return 1200 + 120 * (5 - ar) if ar < 5 else 1200 - 150 * (ar - 5)
+
+
+def _ms_ar(ms):
+    return 5 - (ms - 1200) / 120 if ms > 1200 else 5 + (1200 - ms) / 150
+
+
+def apply_mods(meta, timing, objs, mods):
+    """Карта такой, какой её играют с модами: скорость (DT/HT и их настройки), HR/EZ, Difficulty Adjust.
+    С другой скоростью AR и OD считаются по настоящему времени появления и окнам попадания."""
+    od = float(meta.get("OverallDifficulty", 8) or 8)
+    cs = float(meta.get("CircleSize", 4) or 4)
+    ar = float(meta.get("ApproachRate", od) or od)
+    da = mods.get("da") or {}
+    cs = float(da.get("circle_size", cs))
+    ar = float(da.get("approach_rate", ar))
+    od = float(da.get("overall_difficulty", od))
+    if mods.get("hr"):
+        cs, ar, od = min(cs * 1.3, 10.0), min(ar * 1.4, 10.0), min(od * 1.4, 10.0)
+    if mods.get("ez"):
+        cs, ar, od = cs * 0.5, ar * 0.5, od * 0.5
+    rate = mods.get("rate") or 1.0
+    if rate != 1.0:
+        ar = _ms_ar(_ar_ms(ar) / rate)
+        od = (80 - (80 - 6 * od) / rate) / 6
+        objs = [dict(o, t=o["t"] / rate) for o in objs]
+        timing = [(t / rate, beat / rate if uninh else beat, uninh) for t, beat, uninh in timing]
+    return dict(meta, CircleSize=cs, ApproachRate=ar, OverallDifficulty=od), timing, objs
+
+
+def metrics(text, mods=None):
+    """Возвращает словарь объективных метрик карты. mods - dict(rate, hr, ez, da, hidden): метрики карты,
+    сыгранной с этими модами."""
     meta, timing, objs = parse_osu(text)
     if meta.get("Mode", "0") not in ("0", ""):
         return None
+    if mods:
+        meta, timing, objs = apply_mods(meta, timing, objs, mods)
     hits = [o for o in objs if o["kind"] != "spinner"]
     if len(hits) < 30 or not timing:
         return None
@@ -231,7 +265,7 @@ def metrics(text):
     n_fast = sum(fast.values())
     tap_entropy = sum(c / n_fast * math.log2(n_fast / c) for c in fast.values()) if n_fast else 0.0
 
-    return dict(
+    out = dict(
         cs=cs,
         ar=float(meta.get("ApproachRate", meta.get("OverallDifficulty", 9)) or 9),
         od=float(meta.get("OverallDifficulty", 8) or 8),
@@ -260,3 +294,6 @@ def metrics(text):
         switch_ratio=round(switch_ratio, 3),
         tap_entropy=round(tap_entropy, 2),
     )
+    if mods:
+        out.update(rate=mods.get("rate") or 1.0, hr=bool(mods.get("hr")), hidden=bool(mods.get("hidden")))
+    return out
