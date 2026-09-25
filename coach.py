@@ -44,7 +44,7 @@ DIFF_MODS = {"DT", "NC", "HT", "DC", "HR", "EZ", "DA", "WU", "WD", "AS"}
 DAY = 86400
 
 _lock = threading.RLock()
-_mem = dict(mtime=None, scores=[], updated=None, error=None)
+_mem = dict(sig=None, read_at=0, scores=[], updated=None, error=None)
 
 # ------------------------------------------------------------ справочники ----
 
@@ -154,12 +154,23 @@ def _ts(iso):
 
 # -------------------------------------------------------------- попытки ----
 
-SCORES_VERSION = 2
+SCORES_VERSION = 3
+REREAD_EVERY = 120              # на всякий случай перечитывать результаты раз в 2 минуты
 
 
-def load_scores(mtime):
+def realm_signature(realm):
+    """Признак изменения базы. Время файла не годится: lazer держит client.realm открытым и пишет
+    через отображение в память, а Windows тогда не обновляет время изменения. Зато при каждой записи
+    Realm меняет корневую ссылку в заголовке файла (первые 24 байта)."""
+    st = os.stat(realm)
+    with open(realm, "rb") as f:
+        head = f.read(24)
+    return "%d:%d:%s" % (st.st_mtime_ns, st.st_size, head.hex())
+
+
+def load_scores(sig, force=False):
     cached = _load(SCORES_JSON)
-    if cached and cached.get("mtime") == mtime and cached.get("v") == SCORES_VERSION:
+    if not force and cached and cached.get("sig") == sig and cached.get("v") == SCORES_VERSION:
         return cached["scores"]
     out = os.path.join(COACH_DIR, "scores_dump.json")
     os.makedirs(COACH_DIR, exist_ok=True)
@@ -181,7 +192,7 @@ def load_scores(mtime):
         s["breaks"] = st.get("large_tick_miss", 0)
         s["maxStats"] = None
     scores.sort(key=lambda s: s["ts"])
-    _save(SCORES_JSON, {"v": SCORES_VERSION, "mtime": mtime, "scores": scores})
+    _save(SCORES_JSON, {"v": SCORES_VERSION, "sig": sig, "scores": scores})
     return scores
 
 
@@ -230,23 +241,28 @@ def refresh(force=False):
     with _lock:
         try:
             realm = trainer.realm_path()
-            mtime = os.path.getmtime(realm)
+            sig = realm_signature(realm)
         except (RuntimeError, OSError) as e:
             _mem["error"] = str(e)
             return False
-        if not force and mtime == _mem["mtime"]:
+        stale = time.time() - (_mem.get("read_at") or 0) > REREAD_EVERY
+        if not force and not stale and sig == _mem.get("sig"):
             return False
         try:
-            sc = load_scores(mtime)
+            sc = load_scores(sig, force=force or stale)
         except RuntimeError as e:
             _mem["error"] = str(e)
+            return False
+        _mem["read_at"] = time.time()
+        if not force and _mem.get("scores") and [s["id"] for s in sc] == [s["id"] for s in _mem["scores"]]:
+            _mem["sig"] = sig               # новых попыток нет - разбирать и пересчитывать нечего
             return False
         for s in sc:
             analysis(s)
         st = load_state()
         evaluate(st, sc)
         save_state(st)
-        _mem.update(mtime=mtime, scores=sc, updated=time.time(), error=None)
+        _mem.update(sig=sig, scores=sc, updated=time.time(), error=None)
         return True
 
 
