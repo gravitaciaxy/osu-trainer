@@ -65,6 +65,9 @@ EN = {
     "sliders %.0f%%, spacing %.1f×": "sliders %.0f%%, spacing %.1f×",
     "OD %.1f, %.0f BPM, мало streams": "OD %.1f, %.0f BPM, few streams",
     "похожесть %.0f%% (отличается: %s)": "similarity %.0f%% (differs in: %s)",
+    "быстрых нот без прыжков %.0f%%, %.0f BPM, пик %.1f нот/с":
+        "fast notes without jumps %.0f%%, %.0f BPM, peak %.1f notes/s",
+    "alt %.0f%% промежутков, %.0f BPM по 1/2, цепочки до %d нот": "alt %.0f%% of gaps, %.0f BPM as 1/2, runs up to %d notes",
     "по отметкам автора: %+.0f (похожа на «%s»)": "author's labels: %+.0f (similar to “%s”)",
     "по отметкам автора: %+.0f (порог навыка)": "author's labels: %+.0f (skill threshold)",
     "Фарм-карт пока не отмечено": "No farm maps have been marked yet",
@@ -157,6 +160,10 @@ ES = {
     "sliders %.0f%%, spacing %.1f×": "sliders %.0f%%, spacing %.1f×",
     "OD %.1f, %.0f BPM, мало streams": "OD %.1f, %.0f BPM, pocos streams",
     "похожесть %.0f%% (отличается: %s)": "similitud %.0f%% (difiere en: %s)",
+    "быстрых нот без прыжков %.0f%%, %.0f BPM, пик %.1f нот/с":
+        "notas rápidas sin saltos %.0f%%, %.0f BPM, pico %.1f notas/s",
+    "alt %.0f%% промежутков, %.0f BPM по 1/2, цепочки до %d нот":
+        "alt %.0f%% de los intervalos, %.0f BPM en 1/2, cadenas de hasta %d notas",
     "по отметкам автора: %+.0f (похожа на «%s»)": "marcas del autor: %+.0f (parecido a «%s»)",
     "по отметкам автора: %+.0f (порог навыка)": "marcas del autor: %+.0f (umbral de la habilidad)",
     "Фарм-карт пока не отмечено": "Todavía no hay mapas de farm marcados",

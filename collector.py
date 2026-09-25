@@ -63,8 +63,10 @@ RULES = [
     (r"hidden\s+gems?", None),                          # «скрытые жемчужины» - не про HD
     (r"death\s*-?\s*streams?|\bstreams?\b|\bstreaming\b|\bstreamy\b|стрим\w*", "streams"),
     (r"\bjumps?\b|\baim\b|\baiming\b|\baimslop\b|\bspaced\b|\bаим\w*|джамп\w*", "jumps"),
-    (r"\bspeed\b|\bbursts?\b|\btapping\b|\bsingle\s*-?\s*tap\w*|\balt\b|\balternat(?:e|ing|ion)\b",
-     "speed"),
+    # alt, bursts и speed - разные навыки: bursts бывают не только в speed-картах, alt - быстрые ноты с прыжками
+    (r"\balt\b|\balternat(?:e|ing|ion)\b", "alt"),
+    (r"\bbursts?\b", "bursts"),
+    (r"\bspeed\b|\btapping\b|\bsingle\s*-?\s*tap\w*", "speed"),
     (r"\bstamina\b|\bmarathons?\b|\bendurance\b|\bстамин\w*", "stamina"),
     (r"\btech\b|\btechnical\b|\btechy\b|\bgimmick\w*|\bтех\b|\bтехнич\w*", "tech"),
     (r"\bpoly\s*rhythm\w*|\brhythm\w*", "fingercontrol"),

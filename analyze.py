@@ -3,6 +3,7 @@ import math
 from collections import Counter
 
 STREAM_MAX_MS = 150     # 1/4 медленнее ~100 BPM - уже не streams (чаще всего слоупарт с половинным BPM)
+ALT_MS = (95, 140)      # alt: ноты с прыжком через 95-140 мс - 1/2 от ~215 BPM или 1/4 на медленном BPM
 FAST_MS = 130           # быстрый промежуток между нотами: 1/4 от 115 BPM, 1/3 от 154 BPM
 PAUSE_MS = 400          # промежуток длиннее - пауза, а не ритм
 SNAPS = (1 / 16, 1 / 12, 1 / 8, 1 / 6, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4, 1.0)
@@ -214,6 +215,22 @@ def metrics(text, mods=None):
     burst_gaps = sorted(g[0] for r in burst_runs for g in r)
     burst_bpm = 15000.0 / burst_gaps[len(burst_gaps) // 2] if burst_gaps else 0
     alt_ratio = sum(1 for g in gaps if g[0] <= STREAM_MAX_MS and g[2] >= 1.2) / len(gaps)
+    # alt как навык: одним пальцем такие ноты уже не взять, надо чередовать - и при этом целиться. 1/2 при 200 BPM
+    # (150 мс) - ещё обычные прыжки, 1/4 быстрее ~160 BPM (<95 мс) - уже streams. Скорость - как BPM для 1/2
+    is_alt = [ALT_MS[0] <= g[0] <= ALT_MS[1] and g[2] >= 1.2 for g in gaps]
+    alt_dts = sorted(g[0] for g, a in zip(gaps, is_alt) if a)
+    alt_share = len(alt_dts) / len(gaps)
+    alt_bpm = 30000.0 / alt_dts[len(alt_dts) // 2] if alt_dts else 0
+    alt_run = run = 0
+    for a in is_alt:
+        run = run + 1 if a else 0
+        alt_run = max(alt_run, run)
+    alt_run = alt_run + 1 if alt_run else 0
+    # speed: быстрое нажатие без прыжков - ноты через FAST_MS и чаще почти без spacing (streams, bursts, трели).
+    # Bursts - только часть этого: они бывают и в прыжковых, и в тех-картах. Скорость - как BPM для 1/4
+    taps = sorted(g[0] for g in gaps if g[0] <= FAST_MS and g[2] <= 1.0)
+    tap_share = len(taps) / len(gaps)
+    tap_bpm = 15000.0 / taps[len(taps) // 2] if taps else 0
 
     # --- аим/джампы: скорость курсора на 1/2+ ---
     aim_gaps = [g for g in gaps if 0.35 <= g[1] <= 1.6]
@@ -283,6 +300,11 @@ def metrics(text, mods=None):
         burst_ratio=round(burst_ratio, 3),
         burst_bpm=round(burst_bpm, 1),
         alt_ratio=round(alt_ratio, 3),
+        alt_share=round(alt_share, 3),
+        alt_bpm=round(alt_bpm, 1),
+        alt_run=alt_run,
+        tap_share=round(tap_share, 3),
+        tap_bpm=round(tap_bpm, 1),
         aim_velocity=round(aim_velocity, 2),
         aim_spacing=round(aim_spacing, 2),
         aim_share=round(aim_share, 3),

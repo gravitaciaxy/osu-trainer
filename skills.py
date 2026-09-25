@@ -51,12 +51,33 @@ def _jumpstream(m):
 
 
 def _speed(m):
-    # доля нот в bursts и их скорость; плотность alt-карт (частые 1/2 с прыжками) - не bursts
-    s = (40 * sc(m["burst_ratio"], 0.08, 0.35) + 35 * sc(m["burst_bpm"], 140, 220)
-         + 25 * sc(m["nps_max"], 5, 10))
+    # быстрое нажатие без прыжков: сколько нот идёт быстро и почти без spacing, как быстро и пиковая плотность.
+    # Быстрые ноты с прыжками - это alt, не speed
+    s = 55 * sc(m["tap_share"], 0.25, 0.50) + 25 * sc(m["tap_bpm"], 150, 220) + 20 * sc(m["nps_max"], 6, 11)
+    s -= 50 * clamp((m["alt_share"] - 0.06) / 0.2)
+    return max(s, 0), _("быстрых нот без прыжков %.0f%%, %.0f BPM, пик %.1f нот/с",
+                        m["tap_share"] * 100, m["tap_bpm"], m["nps_max"])
+
+
+def _bursts(m):
+    # доля нот в bursts (3-8 нот) и их скорость; без заметной доли bursts их BPM ничего не значит.
+    # Плотность alt-карт (частые 1/2 с прыжками) - не bursts
+    here = sc(m["burst_ratio"], 0.03, 0.10)
+    s = 50 * sc(m["burst_ratio"], 0.08, 0.35) + here * (35 * sc(m["burst_bpm"], 140, 220) + 15 * sc(m["nps_max"], 5, 10))
     s -= 60 * clamp((m["alt_ratio"] - 0.08) / 0.2)
     return max(s, 0), _("bursts %.0f%% нот, %.0f BPM, пик %.1f нот/с",
                         m["burst_ratio"] * 100, m["burst_bpm"], m["nps_max"])
+
+
+def _alt(m):
+    # быстрые ноты с прыжком между ними (95-140 мс): одним пальцем не успеть, надо чередовать и целиться.
+    # Без заметной доли таких нот их скорость ничего не значит; длинные spaced streams - это jumpstream
+    here = sc(m["alt_share"], 0.02, 0.08)
+    s = (40 * sc(m["alt_share"], 0.04, 0.20)
+         + here * (25 * sc(m["alt_bpm"], 215, 280) + 20 * sc(m["alt_run"], 4, 12) + 15 * sc(m["aim_spacing"], 1.4, 2.4)))
+    s -= 40 * clamp((m["stream_ratio"] - 0.4) / 0.3)
+    return max(s, 0), _("alt %.0f%% промежутков, %.0f BPM по 1/2, цепочки до %d нот",
+                        m["alt_share"] * 100, m["alt_bpm"], m["alt_run"])
 
 
 def _stamina(m):
@@ -129,16 +150,38 @@ SKILLS = {
         queries=["jumpstream", "jump stream", "stream jump", "alt jump"],
         score=_jumpstream, min_score=55),
     "speed": dict(
-        title="Speed / bursts", title_en="Speed / bursts",
-        desc="Короткие быстрые bursts (3–8 нот) на высоком BPM и пиковая плотность нот. "
-             "Alt-карты — частые 1/2 с прыжками — сюда не попадают.",
-        desc_en="Fast short bursts (3–8 notes) at high BPM and peak note density. "
-                "Alt maps — dense 1/2 with jumps — don't count.",
-        desc_es="Bursts cortos y rápidos (3–8 notas) a BPM alto y densidad máxima de notas. "
-                "Los mapas de alt —1/2 densos con saltos— no cuentan.",
-        aliases=["скорость", "спид", "burst", "бёрсты"],
-        queries=["speed", "burst", "fast", "spam", "high bpm"],
+        title="Speed", title_en="Speed",
+        desc="Быстрое нажатие без прыжков: много быстрых нот подряд с небольшим spacing (streams, bursts, трели) "
+             "и высокая пиковая плотность. Быстрые ноты с прыжками — это Alt.",
+        desc_en="Fast tapping without jumps: lots of fast notes with small spacing (streams, bursts, trills) "
+                "and high peak density. Fast notes with jumps are Alt.",
+        desc_es="Pulsación rápida sin saltos: muchas notas rápidas seguidas con poco spacing (streams, bursts, "
+                "trinos) y alta densidad máxima. Las notas rápidas con saltos son Alt.",
+        aliases=["скорость", "спид", "tapping", "singletap"],
+        queries=["speed", "fast", "tapping", "high bpm", "spam"],
         score=_speed, min_score=55),
+    "bursts": dict(
+        title="Bursts", title_en="Bursts",
+        desc="Короткие быстрые цепочки (3–8 нот) на высоком BPM. Бывают не только в speed-картах, но и в "
+             "прыжковых и тех-картах. Alt-карты — частые ноты с прыжками — сюда не попадают.",
+        desc_en="Short fast chains (3–8 notes) at high BPM. They show up not only in speed maps but also in jump "
+                "and tech maps. Alt maps — fast notes with jumps — don't count.",
+        desc_es="Cadenas cortas y rápidas (3–8 notas) a BPM alto. No solo aparecen en mapas de speed, también en "
+                "mapas de saltos y de tech. Los mapas de alt —notas rápidas con saltos— no cuentan.",
+        aliases=["burst", "бёрсты", "берсты", "бурсты"],
+        queries=["burst", "bursts", "burst jumps"],
+        score=_bursts, min_score=55),
+    "alt": dict(
+        title="Alt", title_en="Alt",
+        desc="Быстрые ноты с прыжком между ними — 1/2 от ~215 BPM или 1/4 на медленном BPM: одним пальцем уже "
+             "не успеть, надо чередовать и при этом целиться.",
+        desc_en="Fast notes with a jump between them — 1/2 from ~215 BPM or 1/4 at low BPM: too fast to single-tap, "
+                "so you alternate while aiming.",
+        desc_es="Notas rápidas con un salto entre ellas — 1/2 desde ~215 BPM o 1/4 a BPM bajo: demasiado rápido "
+                "para un solo dedo, hay que alternar y apuntar a la vez.",
+        aliases=["альт", "alternate", "alt jumps"],
+        queries=["alt", "alternate", "alt jumps", "high bpm jumps"],
+        score=_alt, min_score=45),
     "stamina": dict(
         title="Stamina", title_en="Stamina",
         desc="Длинные карты с большой долей streams и высокой средней плотностью нот.",

@@ -57,7 +57,7 @@ _mem = dict(sig=None, read_at=0, scores=[], updated=None, error=None)
 
 # метка паттерна -> (как назвать, какую лестницу качать)
 TAG_INFO = {
-    "burst": ("короткие bursts (3–8 нот)", "speed"),
+    "burst": ("короткие bursts (3–8 нот)", "bursts"),
     "stream": ("streams (9–16 нот)", "streams"),
     "long_stream": ("длинные streams (17–32 ноты)", "streams"),
     "deathstream": ("deathstreams (33+ нот)", "stamina"),
@@ -78,10 +78,17 @@ LADDERS = {
     "streams": dict(title="Streams", skill="streams", param="stream_bpm", unit="BPM streams", fmt="%.0f",
                     steps=[150, 160, 170, 180, 190, 200, 210, 220, 230, 240, 250],
                     need=dict(stream_ratio=0.2, max_run=9)),
-    # по BPM самих bursts: по плотности нот сюда попадали alt-карты (частые 1/2 с прыжками)
-    "speed": dict(title="Speed / bursts", skill="speed", param="burst_bpm", unit="BPM bursts", fmt="%.0f",
+    # быстрое нажатие без прыжков - по BPM быстрых нот; быстрые ноты с прыжками - это alt
+    "speed": dict(title="Speed", skill="speed", param="tap_bpm", unit="BPM быстрых нот", fmt="%.0f",
                   steps=[160, 170, 180, 190, 200, 210, 220, 230, 240, 250],
-                  need=dict(burst_ratio=0.2), limit=dict(alt_ratio=0.1)),
+                  need=dict(tap_share=0.35), limit=dict(alt_share=0.1)),
+    # по BPM самих bursts: по плотности нот сюда попадали alt-карты (частые 1/2 с прыжками)
+    "bursts": dict(title="Bursts", skill="bursts", param="burst_bpm", unit="BPM bursts", fmt="%.0f",
+                   steps=[160, 170, 180, 190, 200, 210, 220, 230, 240, 250],
+                   need=dict(burst_ratio=0.2), limit=dict(alt_ratio=0.1)),
+    # alt - по скорости нот с прыжками (как BPM для 1/2)
+    "alt": dict(title="Alt", skill="alt", param="alt_bpm", unit="BPM alt (по 1/2)", fmt="%.0f",
+                steps=[220, 230, 240, 250, 260, 270, 280, 290, 300], need=dict(alt_share=0.08)),
     "stamina": dict(title="Stamina", skill="stamina", param="length", unit="секунд, streams от 30%", fmt="%.0f",
                     steps=[90, 120, 150, 180, 210, 240, 300, 360], need=dict(stream_ratio=0.3)),
     "jumps": dict(title="Jumps / aim", skill="jumps", param="aim_velocity", unit="скорость курсора", fmt="%.0f",
@@ -134,6 +141,10 @@ def enabled():
     return bool(config.load().get("coach"))
 
 
+STATE_VERSION = 2
+SKILLS_VERSION = 2              # формулы навыков поменялись - «как сыграна» у случайных карт пересчитывается
+
+
 def load_state():
     st = _load(STATE_JSON, {}) or {}
     st.setdefault("v", 1)
@@ -142,7 +153,38 @@ def load_state():
     st.setdefault("trainings", [])
     st.setdefault("tests", [])
     st.setdefault("control", {"maps": {}, "days": []})
+    if st["v"] < STATE_VERSION and os.path.exists(STATE_JSON):
+        _save(STATE_JSON[:-5] + ".before-v%d.json" % STATE_VERSION, _load(STATE_JSON))
+        _migrate(st)
+        save_state(st)
     return st
+
+
+def _migrate(st):
+    """Разовые переделки состояния под новую версию.
+    v2 (2026-09-26): «Speed / bursts» разделён на Speed (быстрые ноты без прыжков), Bursts и Alt. Прежняя лестница
+    мерила BPM bursts - значит, это лестница Bursts; туда же её тренировки, зачёты случайных карт и выводы теста."""
+    if st["v"] < 2:
+        def ren(k):
+            return "bursts" if k == "speed" else k
+        if "speed" in st["ladders"] and "bursts" not in st["ladders"]:
+            st["ladders"]["bursts"] = st["ladders"].pop("speed")
+        st["active"] = ren(st["active"])
+        for tr in st["trainings"]:
+            tr["ladder"] = ren(tr["ladder"])
+        for t in st["tests"]:
+            dg = t.get("diagnosis") or {}
+            dg["ladders"] = [ren(k) for k in dg.get("ladders", [])]
+            for x in dg.get("weak", []) + (dg.get("agg") or {}).get("tags", []):
+                x["ladder"] = ren(x.get("ladder"))
+        r = st.get("random") or {}
+        for h in r.get("history", []) + ([r["current"]] if r.get("current") else []):
+            for k in (h.get("result") or {}).get("ladders") or []:
+                if k.get("ladder") == "speed":
+                    k.update(ladder="bursts", title="Bursts")
+            if h.get("ladder") == "speed":
+                h.update(ladder="bursts", ladder_title="Bursts")
+    st["v"] = STATE_VERSION
 
 
 def save_state(st):
@@ -233,8 +275,8 @@ def map_metrics(file_hash, mods=None, key=""):
     if not cache:
         cache.update(_load(METRICS_JSON, {}) or {})
     ck = file_hash + ("|" + key if key else "")
-    if ck in cache and (cache[ck] is None or "alt_ratio" in cache[ck]):
-        return cache[ck]                        # записи до появления bursts/alt считаются заново
+    if ck in cache and (cache[ck] is None or "tap_share" in cache[ck]):
+        return cache[ck]                        # записи до появления speed/bursts/alt считаются заново
     path = _files(file_hash)
     m = None
     if path and os.path.exists(path):
@@ -469,6 +511,26 @@ def farm_filter(mode):
 def personal_adjust(cfg, m, s, why):
     """Хук подбора (a.adjust в trainer.make_scorer): оценка навыка с поправкой по твоим отметкам."""
     return label_model().adjust(cfg, m, s, why)
+
+
+def upgrade_labels(sc=None):
+    """Метрики отметок - под нынешние формулы: у старых отметок нет метрик, появившихся позже (speed/bursts/alt).
+    Пересчитываются по той же попытке; изменённые отметки уходят на сайт."""
+    with _lock:
+        d = load_labels()
+        by_id = {s["id"]: s for s in (sc if sc is not None else scores())}
+        changed = False
+        for lab in d["labels"].values():
+            if "tap_share" in (lab.get("metrics") or {}):
+                continue
+            s = by_id.get(lab.get("id"))
+            m = play_metrics(s) if s else None
+            if m:
+                lab["metrics"] = m
+                changed = True
+        if changed:
+            save_labels(d, sync=True)
+        return changed
 
 
 def public_labels():
@@ -1521,7 +1583,11 @@ def evaluate_random(st, sc):
     for h in r["history"] + ([cur] if cur else []):
         res = h.get("result")
         s = res and by_id.get(res["id"])
-        if not s or "ladders" in res:
+        if not s:
+            continue
+        if res.get("kv") != SKILLS_VERSION:     # «как сыграна» - по нынешним формулам и отметкам
+            res["kind"], res["kv"] = row(s)["kind"], SKILLS_VERSION
+        if "ladders" in res:
             continue
         if s["id"] not in done:
             done[s["id"]] = (credit_random(st, s), row(s)["kind"])

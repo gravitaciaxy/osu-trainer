@@ -37,7 +37,8 @@ CAL_MAX = 20
 
 # метрики, которые нужны формулам навыков (skills.py) и похожести; остальное на сайт не уходит
 METRIC_KEYS = sorted(set(KNN_FEATURES) | {
-    "long_runs", "aim_share", "stream_spacing", "nps", "sv_var", "odd_ratio", "slider_anchors", "tap_entropy", "hidden"})
+    "long_runs", "aim_share", "stream_spacing", "nps", "sv_var", "odd_ratio", "slider_anchors", "tap_entropy", "hidden",
+    "tap_share", "tap_bpm", "alt_share", "alt_bpm", "alt_run"})
 
 GLOBAL_DIR = os.path.join(config.CACHE_DIR, "labels")
 GLOBAL_JSON = os.path.join(GLOBAL_DIR, "global.json")

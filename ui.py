@@ -415,6 +415,11 @@ def coach_watch():
     """Тренер следит за базой игры: новая попытка разбирается через несколько секунд после карты,
     а в режиме «случайная карта» сразу готовится следующая."""
     if coach.enabled():
+        try:
+            coach.refresh()
+            coach.upgrade_labels()          # метрики старых отметок - под нынешние формулы
+        except Exception:
+            traceback.print_exc()
         coach.sync_labels(delay=10)         # отметки, не дошедшие до сайта в прошлый раз
     while True:
         try:
