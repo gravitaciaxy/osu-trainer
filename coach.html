@@ -773,12 +773,12 @@ function renderTest(){
 const SOURCE = {pinned:'закреплён', profile:'из профиля', 'osu!':'из профиля'};
 const shownMods = m => (m || []).filter(x => x !== 'CL');
 const scoreText = o => pct(o.acc, 2) + ' · ' + (o.fc ? '<span class="ok">FC</span>' : o.misses + ' пр.') +
-  (shownMods(o.mods).length ? ' ' + mods(shownMods(o.mods)) : '');
+  (shownMods(o.mods).length ? ' ' + mods(shownMods(o.mods)) : '') + (o.rate ? ' <span class="muted">×' + o.rate + '</span>' : '');
 function controlTable(maps){
   return '<div class="tablewrap"><table><tr><th>Карта</th><th class="num">Старый ты</th><th class="num">Последний контроль</th><th class="num">Разница</th><th></th></tr>' +
     maps.map(m => { const b = m.base, l = m.latest, d = b && l ? l.acc - b.acc : null;
       return '<tr><td>' + mapName(m) + ' <span class="muted">' + num(m.sr, 2) + '★' + (b && b.sr && Math.abs(b.sr - m.sr) >= 0.01 ? ', с модами ' + num(b.sr, 2) + '★' : '') + '</span> ' + codeChip(m) +
-        (m.play_mods ? ' <span class="badge warn" title="Старый скор сыгран с этими модами — в зачёт идёт попытка с ними же (HD не важен)">играть с ' + esc(m.play_mods) + '</span>' : '') +
+        (m.play_mods ? ' <span class="badge warn" title="Старый скор сыгран с этими модами — в зачёт идёт попытка с ними же (HD не важен)">играть с ' + esc(m.play_mods) + (b && b.rate ? ' ×' + b.rate : '') + '</span>' : '') +
         (SOURCE[m.source] ? ' <span class="badge">' + SOURCE[m.source] + '</span>' : '') + '</td>' +
         '<td class="num">' + (b ? scoreText(b) + (b.ts ? '<div class="muted">' + (b.source === 'first' ? day(b.ts) + ' (первый контроль)' : dayY(b.ts)) + '</div>' : '') : '<span class="muted">нет</span>') + '</td>' +
         '<td class="num">' + (l ? pct(l.acc, 2) + ' · ' + l.misses + ' пр.<div class="muted">' + day(l.ts) + '</div>' : '<span class="muted">ещё не играл</span>') + '</td>' +

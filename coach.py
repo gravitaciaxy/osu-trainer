@@ -1990,7 +1990,6 @@ FARM_MIN, FARM_SHARE = 10.0, 0.4        # фарм: вес от 10 и доля �
 FARM_SURE = 40.0                        # ...или вес от 40 - такие карты фармят все
 ASSIST_MODS = {"RX", "AP", "AT", "CN", "MG", "TP"}      # игра с помощью - не показатель
 SR_MODS = DIFF_MODS | {"FL"}    # с этими модами звёзды другие
-SR_GUESS = {"DT": 1.4, "HT": 0.75, "HR": 1.08, "EZ": 0.85}     # грубая прикидка до точного расчёта osu!
 
 
 def diff_key(mods):
@@ -2034,18 +2033,33 @@ def _profile_best(p, exact):
             key, mods = _sr_mods(bid, s)
             sr = m["sr"] if not key else exact.get(key)
             if sr is None:
-                sr, k = m["sr"], diff_key(mods)
-                for a, f in SR_GUESS.items():
-                    sr *= f if a in k else 1
+                sr = _guess_sr(m["sr"], mods)
             b = beauty(sr, s)
             if bid not in best or b > best[bid][0]:
                 best[bid] = (b, sr, s)
     return best
 
 
+def _rate(mods):
+    """Скорость карты: DT - 1.5, HT - 0.75, но в lazer скорость настраивается (бывает и DT 1.04)."""
+    for m in mods:
+        if m["acronym"] in ("DT", "NC", "HT", "DC"):
+            return (m.get("settings") or {}).get("speed_change") or (1.5 if m["acronym"] in ("DT", "NC") else 0.75)
+    return 1.0
+
+
+def _guess_sr(sr, mods):
+    """Грубая прикидка звёзд с модами, пока нет точного расчёта osu!."""
+    sr *= 1 + 0.8 * (_rate(mods) - 1)
+    k = diff_key(mods)
+    return sr * (1.08 if "HR" in k else 0.85 if "EZ" in k else 1.0)
+
+
 def _old_from(sr, s):
+    rate = _rate(s["mods"])
     return dict(acc=s["acc"], misses=s["miss"], fc=s["fc"], rank=s["rank"], pp=s["pp"], ts=s["ts"], sr=round(sr, 2),
-                mods=[m["acronym"] for m in s["mods"]], id=s["id"], source="osu!")
+                mods=[m["acronym"] for m in s["mods"]], id=s["id"], source="osu!",
+                **({"rate": rate} if rate not in (1.0, 1.5, 0.75) else {}))
 
 
 def rank_profile(log):
