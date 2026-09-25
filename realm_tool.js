@@ -89,6 +89,22 @@ function fileFormat(path) {
       }
     });
     console.log(JSON.stringify(report));
+  } else if (cmd === 'set') {
+    // коллекция ровно с этими картами (создаётся, если её нет) - для «случайной карты» тренера
+    const payload = JSON.parse(fs.readFileSync(arg, 'utf8'));   // [{name, hashes:[]}]
+    const report = [];
+    realm.write(() => {
+      for (const { name, hashes } of payload) {
+        let c = realm.objects('BeatmapCollection').filtered('Name == $0', name)[0];
+        if (!c) c = realm.create('BeatmapCollection', {
+          ID: new Realm.BSON.UUID(), Name: name, BeatmapMD5Hashes: [], LastModified: new Date(),
+        });
+        c.BeatmapMD5Hashes.splice(0, c.BeatmapMD5Hashes.length, ...hashes);
+        c.LastModified = new Date();
+        report.push({ name, total: c.BeatmapMD5Hashes.length });
+      }
+    });
+    console.log(JSON.stringify(report));
   } else if (cmd === 'remove') {
     let n = 0;
     realm.write(() => {
@@ -98,7 +114,7 @@ function fileFormat(path) {
     });
     console.log(JSON.stringify({ removed: n }));
   } else {
-    console.error('usage: list | local <out.json> | scores <out.json> | add <payload.json> | remove <name>');
+    console.error('usage: list | local <out.json> | scores <out.json> | add <payload.json> | set <payload.json> | remove <name>');
     process.exit(2);
   }
   realm.close();

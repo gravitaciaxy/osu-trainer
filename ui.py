@@ -366,6 +366,15 @@ def coach_post(path, body):
         return {"ok": True}
     if path == "/api/coach/controlday":
         return {"id": coach_job(coach.build_control_day).id}
+    if path == "/api/coach/random":
+        action = str(body.get("action") or "next")
+        if action == "stop":
+            coach.random_stop()
+            return {"ok": True}
+        skill = str(body.get("skill") or "") or None
+        if skill and skill != "any" and skill not in coach.skills.SKILLS:
+            raise RuntimeError("Нет такого навыка")
+        return {"id": coach_job(lambda log: coach.random_next(log, skill)).id}
     if path == "/api/coach/apikeys":
         coach.save_keys(body.get("client_id"), body.get("client_secret"), body.get("user"))
         return {"ok": True}
@@ -377,11 +386,16 @@ def coach_post(path, body):
 
 
 def coach_watch():
-    """Тренер следит за базой игры: новая попытка разбирается через несколько секунд после карты."""
+    """Тренер следит за базой игры: новая попытка разбирается через несколько секунд после карты,
+    а в режиме «случайная карта» сразу готовится следующая."""
     while True:
         try:
             if coach.enabled():
                 coach.refresh()
+                if coach.random_pending():
+                    coach_job(lambda log: coach.random_next(log))
+        except RuntimeError:
+            pass                        # уже идёт другая сборка тренера - следующая карта подождёт
         except Exception:
             traceback.print_exc()
         time.sleep(15)

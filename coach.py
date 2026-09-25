@@ -14,13 +14,16 @@ import datetime
 import json
 import math
 import os
+import random
 import re
 import statistics
 import threading
 import time
 
 import analyze
+import collector
 import config
+import net
 import osu_api
 import pools
 import replay
@@ -790,6 +793,7 @@ def evaluate(st, sc):
     for test in st["tests"]:
         evaluate_test(test, sc, st)
     evaluate_control(st, sc)
+    evaluate_random(st, sc)
 
 
 def escape(st, key, choice):
@@ -947,6 +951,157 @@ def free_play(st, key, days=14):
                             ok=passed(s, thr)))
     return dict(days=days, plays=out[-8:], n=len(out), ok=sum(1 for x in out if x["ok"]),
                 acc=round(statistics.fmean(x["acc"] for x in out), 4) if out else None)
+
+
+# ------------------------------------------------------- случайная карта ----
+# Одна карта случайного навыка около твоего уровня: сыграл - тренер видит результат и сам готовит
+# следующую. В игре она лежит в коллекции, где всегда ровно одна текущая карта.
+
+RANDOM_COLLECTION = "osu!drill · случайная"
+PREPARE_TIMEOUT = 300
+
+
+def random_state(st):
+    r = st.setdefault("random", {})
+    r.setdefault("current", None)
+    r.setdefault("history", [])
+    r.setdefault("auto", False)
+    r.setdefault("skill", "any")
+    return r
+
+
+def random_pick(skill, exclude, log):
+    """Случайная новая карта навыка (или случайного навыка) около твоего уровня: кандидаты из подборок
+    игроков и поиска, проверяются разбором по одному, пока не найдётся карта с явным навыком."""
+    c = comfort_stars()
+    stars = (max(1.0, round(c - 0.5, 2)), round(c + 0.5, 2))
+    keys = [skill] if skill in skills.SKILLS else list(skills.SKILLS)
+    random.shuffle(keys)
+    index = collector.load()
+    for key in keys[:4]:
+        cfg = skills.SKILLS[key]
+        log("Навык: %s, звёзды %.1f–%.1f (твой уровень ~%.1f★)" % (cfg["title"], stars[0], stars[1], c))
+        a = trainer.coerce_params(dict(skill=key, stars="%.2f-%.2f" % stars, pool=80, depth=100, crowd_weight=0.5,
+                                       status="ranked,loved", lang="ru"))
+        trainer.prepare(a)
+        cands = []
+        try:
+            cands = trainer.gather_crowd(index, [key], None, (), a, stars, set(), log) if index else []
+        except (OSError, RuntimeError):
+            cands = []
+        if len(cands) < 8:
+            try:
+                cands += trainer.gather_online(cfg["queries"][:2] + [""], a, stars, set(), log)
+            except (OSError, RuntimeError):
+                pass
+        cands = [x for x in cands if x.get("md5") and x["md5"] not in exclude]
+        random.shuffle(cands)
+        scorer = trainer.make_scorer([cfg], None, a)
+        for cand in cands[:25]:
+            res = trainer.score_candidate(cand, scorer, a)
+            if res and res["score"] >= cfg["min_score"]:
+                return key, res
+        log("  подходящей новой карты не нашлось — пробую другой навык")
+    raise RuntimeError("Не нашёл подходящей новой карты — попробуй ещё раз")
+
+
+def _deliver(m, log):
+    """Карта в игру: скачать и отдать lazer, если её нет, и сделать коллекцию ровно из неё."""
+    if m["md5"] not in {b["md5"] for b in trainer.local_library()}:
+        log("Скачиваю %s — %s..." % (m["artist"], m["title"]))
+        path = net.osz(m["sid"], trainer.DL)
+        if not path:
+            return False
+        trainer.import_into_osu([path])
+        log("  отправил в osu! — во время игры lazer добавит её, когда выйдешь в меню")
+    log("Резервная копия базы: %s" % trainer.backup_realm())
+    pf = os.path.join(COACH_DIR, "random_payload.json")
+    _save(pf, [{"name": RANDOM_COLLECTION, "hashes": [m["md5"]]}])
+    trainer.realm_cmd("set", pf)
+    return True
+
+
+def random_next(log, skill=None):
+    with _lock:
+        st = load_state()
+        r = random_state(st)
+        if skill:
+            r["skill"] = skill
+        r["auto"] = True
+        r["preparing"] = time.time()
+        skill = r["skill"]
+        exclude = played_recently(scores()) | reserved_md5(st) | {h["md5"] for h in r["history"]}
+        if r["current"]:
+            exclude.add(r["current"]["md5"])
+        save_state(st)
+    pick = None
+    try:
+        for _attempt in range(3):
+            key, m = random_pick(skill, exclude, log)
+            pick = dict(bid=m["bid"], sid=m["sid"], md5=m["md5"], sr=m["sr"], title=m["title"], artist=m["artist"],
+                        diff=m["diff"], skill=key, skill_title=skills.SKILLS[key]["title"], score=m["score"],
+                        why=m.get("why", ""), bpm=m["metrics"]["bpm"], length=m["metrics"]["length"], given=time.time())
+            if _deliver(pick, log):
+                break
+            log("  не скачалась — ищу другую")
+            exclude.add(pick["md5"])
+            pick = None
+        if not pick:
+            raise RuntimeError("Карты не скачиваются — зеркало не отвечает, попробуй позже")
+    finally:
+        with _lock:
+            st = load_state()
+            r = random_state(st)
+            r.pop("preparing", None)
+            if pick:
+                cur = r["current"]
+                if cur and not cur.get("result"):       # предыдущую не сыграл - в историю как пропущенную
+                    r["history"].append(dict(cur, skipped=True))
+                r["current"] = pick
+                r["history"] = r["history"][-60:]
+            save_state(st)
+    log("Готово: %s — %s [%s], %.2f★ · %s. В игре — коллекция «%s»." % (
+        pick["artist"], pick["title"], pick["diff"], pick["sr"], pick["skill_title"], RANDOM_COLLECTION))
+    return pick
+
+
+def random_stop():
+    with _lock:
+        st = load_state()
+        random_state(st)["auto"] = False
+        save_state(st)
+
+
+def evaluate_random(st, sc):
+    r = st.get("random")
+    cur = r and r.get("current")
+    if not cur or cur.get("result"):
+        return
+    for s in sc:
+        if s["md5"] == cur["md5"] and s["ts"] >= cur["given"] - 5:
+            rw = row(s)
+            cur["result"] = dict(id=s["id"], acc=round(s["acc"], 4), misses=s["misses"], rank=s["rank"], ts=s["ts"],
+                                 ur=rw.get("ur"), weak=[TAG_INFO.get(t, (t,))[0] for t in rw.get("weak", [])])
+            r["history"].append(dict(cur))
+            r["history"] = r["history"][-60:]
+            break
+
+
+def random_pending():
+    """Пора готовить следующую: текущая сыграна, режим включён, сборка не идёт (или зависла)."""
+    with _lock:
+        r = random_state(load_state())
+        busy = r.get("preparing") and time.time() - r["preparing"] < PREPARE_TIMEOUT
+        return bool(r["auto"] and r["current"] and r["current"].get("result") and not busy)
+
+
+def random_view(st):
+    r = random_state(st)
+    busy = bool(r.get("preparing") and time.time() - r["preparing"] < PREPARE_TIMEOUT)
+    return dict(current=r["current"], auto=r["auto"], skill=r["skill"], preparing=busy,
+                history=[h for h in r["history"] if h.get("result")][-8:][::-1],
+                played=sum(1 for h in r["history"] if h.get("result")), collection=RANDOM_COLLECTION,
+                skills=[dict(key=k, title=v["title"]) for k, v in skills.SKILLS.items()])
 
 
 # ------------------------------------------------------ вступительный тест ----
@@ -1331,7 +1486,7 @@ def state_view():
             ladders=[ladder_view(st, k) for k in st["ladders"]],
             ladder_defs=[dict(key=k, title=v["title"], mod=v.get("mod"), unit=v["unit"]) for k, v in LADDERS.items()],
             tests=st["tests"], control=control_view(st, sc), sessions=session_list(), recent=recent,
-            need=NEED, of=OF, default_threshold=DEFAULT_THRESHOLD,
+            random=random_view(st), need=NEED, of=OF, default_threshold=DEFAULT_THRESHOLD,
             tag_names={k: v[0] for k, v in TAG_INFO.items()})
 
 
