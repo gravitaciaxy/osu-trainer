@@ -1060,8 +1060,8 @@ def random_next(log, skill=None):
                 r["current"] = pick
                 r["history"] = r["history"][-60:]
             save_state(st)
-    log("Готово: %s — %s [%s], %.2f★ · %s. В игре — коллекция «%s»." % (
-        pick["artist"], pick["title"], pick["diff"], pick["sr"], pick["skill_title"], RANDOM_COLLECTION))
+    log("Готово: %s — %s [%s], %.2f★ · %s." % (pick["artist"], pick["title"], pick["diff"], pick["sr"], pick["skill_title"]))
+    log("Код для поиска в выборе карты: %s (или коллекция «%s»)" % (pick["bid"], RANDOM_COLLECTION))
     return pick
 
 

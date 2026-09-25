@@ -51,6 +51,11 @@
   .badge.bad{border-color:#6b2a2a;color:var(--err)}
   .badge.warn{border-color:#6b4a1f;color:var(--warn)}
   .badge.mod{border-color:#28465a;color:var(--accent2)}
+  .code{font:12px/1.3 Consolas,"Cascadia Mono",monospace;padding:2px 8px;border-radius:6px;border:1px dashed var(--line2);
+        background:var(--panel2);color:var(--text);cursor:pointer;white-space:nowrap}
+  .code:hover{border-color:var(--accent)}
+  .code.big{font-size:17px;padding:5px 12px;border-style:solid;border-color:var(--accent)}
+  .code.done{border-color:#2f5d3a;color:var(--ok)}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
   th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
   th{color:var(--faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
@@ -134,7 +139,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER = null, LASTUPD = null, BUSY = false;
+let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER = null, LASTUPD = null, LASTRND = null, BUSY = false;
 
 const OFFLINE = 'Программа osu!drill не отвечает — похоже, она закрыта. Запусти её (start.bat в папке osu-trainer): страница переподключится сама.';
 async function api(path, body){
@@ -156,6 +161,21 @@ const RANK = {'-1':'F', 0:'D', 1:'C', 2:'B', 3:'A', 4:'S', 5:'S', 6:'SS', 7:'SS'
 const mods = m => (m && m.length ? m.map(x => '<span class="badge mod">' + esc(x) + '</span>').join(' ') : '');
 const mapName = r => esc(r.artist) + ' — ' + esc(r.title) + ' <span class="muted">[' + esc(r.diff) + ']</span>';
 const tagName = t => (S && S.tag_names[t]) || t;
+// код для поиска в выборе карты lazer: номер сложности находит её сам; без номера - название и сложность
+const mapCode = m => +m.bid > 0 ? String(+m.bid) :
+  'title="' + String(m.title || '').replace(/"/g, '') + '" diff="' + String(m.diff || '').replace(/"/g, '') + '"';
+const codeChip = (m, big) => '<button class="code' + (big ? ' big' : '') + '" data-code="' + esc(mapCode(m)) +
+  '" title="Скопировать, чтобы вставить в поиск в выборе карты osu!" onclick="copyCode(event, this)">' + esc(mapCode(m)) + '</button>';
+function copyCode(ev, el){
+  ev.stopPropagation();
+  const text = el.dataset.code;
+  const fallback = () => { const t = document.createElement('textarea'); t.value = text; t.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(t); t.select(); document.execCommand('copy'); t.remove(); };
+  (navigator.clipboard ? navigator.clipboard.writeText(text) : Promise.reject()).catch(fallback).then(() => {
+    el.classList.add('done'); el.textContent = 'скопировано ✓';
+    setTimeout(() => { el.classList.remove('done'); el.textContent = text; }, 1400);
+  }, () => {});
+}
 
 /* ============================== загрузка ============================== */
 async function refresh(force){
@@ -165,7 +185,9 @@ async function refresh(force){
     $('error').innerHTML = S.error ? '<div class="errbox">' + esc(S.error) + '</div>' : '';
     $('info').textContent = 'попыток в базе: ' + S.plays + ' · твой уровень ~' + num(S.comfort, 2) + '★' +
       (S.updated ? ' · обновлено ' + ago(S.updated) : '');
-    if (S.updated !== LASTUPD || force){ LASTUPD = S.updated; render(); }
+    // следующую случайную карту готовит фон без новых попыток - её тоже надо показать сразу
+    const rnd = JSON.stringify(S.random);
+    if (S.updated !== LASTUPD || force || (TAB === 'today' && rnd !== LASTRND)){ LASTUPD = S.updated; LASTRND = rnd; render(); }
   } catch(e){ $('error').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; }
 }
 function render(){
@@ -213,7 +235,7 @@ function mapsTable(maps, results, opts){
         pct(r.acc, 2) + ' · ' + r.misses + ' пр.' + (r.mods && r.mods.length ? ' ' + mods(r.mods) : '');
       return '<tr' + (r && r.id ? ' class="click" onclick="openPlay(\'' + r.id + '\')"' : '') + '>' +
         (opts.slot ? '<td><b>' + esc(m.slot) + '</b> ' + (m.mod && m.mod !== 'NM' && m.mod !== 'FM' && m.mod !== 'TB' ? '<span class="badge mod">' + esc(m.mod) + '</span>' : '') + '</td>' : '') +
-        '<td>' + mapName(m) + ' <a href="https://osu.ppy.sh/b/' + (+m.bid) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a></td>' +
+        '<td>' + mapName(m) + ' <a href="https://osu.ppy.sh/b/' + (+m.bid) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">↗</a> ' + codeChip(m) + '</td>' +
         '<td class="num">' + num(m.sr, 2) + '</td>' + (opts.value ? '<td class="num">' + esc(m.label || m.value || '') + '</td>' : '') +
         '<td class="num">' + res + '</td></tr>'; }).join('') + '</table></div>';
 }
@@ -227,7 +249,7 @@ function trainingBlock(p){
     h += '<p>Сыграно ' + played + ' из ' + tr.maps.length + ', сдано <b class="' + (ok >= S.need ? 'ok' : '') + '">' + ok + '</b> из ' + Math.min(S.need, tr.maps.length) + ' нужных. ' +
       'Коллекция в игре: <b>' + esc(tr.name) + '</b></p>';
     if (tr.warmup && tr.warmup.length) h += '<h3>Разминка — ступенью ниже, в зачёт не идёт</h3><p class="muted">Коллекция «' + esc(tr.warmup_name) + '»: ' +
-      tr.warmup.map(m => esc(m.artist) + ' — ' + esc(m.title)).join('; ') + '</p>';
+      tr.warmup.map(m => esc(m.artist) + ' — ' + esc(m.title) + ' ' + codeChip(m)).join('; ') + '</p>';
     h += '<h3>Карты ступени</h3>' + mapsTable(tr.maps, res, {value:'параметр'});
     h += '<div class="actions"><button class="btn" onclick="finishTraining(\'' + tr.id + '\')">Закончить — несыгранные не в зачёт</button>' +
       '<button class="btn" onclick="buildTraining(\'' + p.ladder + '\')">Новая тренировка</button></div>';
@@ -256,7 +278,9 @@ function randomCard(r){
   if (c && !c.result){
     h += '<p><b>' + mapName(c) + '</b> · ' + num(c.sr, 2) + '★ · <span class="badge acc">' + esc(c.skill_title) + '</span> ' +
       '<a href="https://osu.ppy.sh/b/' + (+c.bid) + '" target="_blank" rel="noopener">↗</a></p>' +
-      '<p class="muted">' + esc(c.why) + '. В игре — коллекция «' + esc(r.collection) + '», в ней только эта карта. ' +
+      '<p>Код: ' + codeChip(c, true) + ' — нажми, чтобы скопировать, и вставь в поиск в выборе карты: lazer найдёт её по номеру. ' +
+      'Если поиск пока пустой — lazer ещё импортирует карту, подожди пару секунд.</p>' +
+      '<p class="muted">' + esc(c.why) + '. Ещё она лежит в коллекции «' + esc(r.collection) + '» — там только эта карта. ' +
       'Сыграй её: результат появится здесь через несколько секунд после конца карты, и сразу будет следующая.</p>';
   } else if (c && c.result){
     const x = c.result;
@@ -272,7 +296,7 @@ function randomCard(r){
     (c && !c.result ? 'Другую' : 'Дай карту') + '</button>' +
     (r.auto ? '<button class="btn" onclick="post(\'/api/coach/random\', {action:\'stop\'})">Стоп</button>' : '') + '</div>';
   if (r.history.length) h += '<h3>Последние сыгранные (' + r.played + ')</h3><div class="tablewrap"><table><tr><th>Карта</th><th>Навык</th><th class="num">★</th><th class="num">Результат</th></tr>' +
-    r.history.map(x => '<tr class="click" onclick="openPlay(\'' + x.result.id + '\')"><td>' + mapName(x) + '</td><td class="muted">' + esc(x.skill_title) + '</td><td class="num">' + num(x.sr, 2) + '</td>' +
+    r.history.map(x => '<tr class="click" onclick="openPlay(\'' + x.result.id + '\')"><td>' + mapName(x) + ' ' + codeChip(x) + '</td><td class="muted">' + esc(x.skill_title) + '</td><td class="num">' + num(x.sr, 2) + '</td>' +
       '<td class="num">' + pct(x.result.acc, 2) + ' · ' + x.result.misses + ' пр.</td></tr>').join('') + '</table></div>';
   return h + '</div>';
 }
@@ -627,7 +651,7 @@ function renderTest(){
 function controlTable(maps){
   return '<div class="tablewrap"><table><tr><th>Карта</th><th class="num">Старый ты</th><th class="num">Последний контроль</th><th class="num">Разница</th><th></th></tr>' +
     maps.map(m => { const b = m.base, l = m.latest, d = b && l ? l.acc - b.acc : null;
-      return '<tr><td>' + mapName(m) + ' <span class="muted">' + num(m.sr, 2) + '★</span></td>' +
+      return '<tr><td>' + mapName(m) + ' <span class="muted">' + num(m.sr, 2) + '★</span> ' + codeChip(m) + '</td>' +
         '<td class="num">' + (b ? pct(b.acc, 2) + ' · ' + b.misses + ' пр.' + (b.ts ? '<div class="muted">' + day(b.ts) + (b.source === 'first' ? ' (первый контроль)' : '') + '</div>' : '') : '<span class="muted">нет</span>') + '</td>' +
         '<td class="num">' + (l ? pct(l.acc, 2) + ' · ' + l.misses + ' пр.<div class="muted">' + day(l.ts) + '</div>' : '<span class="muted">ещё не играл</span>') + '</td>' +
         '<td class="num ' + (d == null ? '' : d >= 0 ? 'ok' : 'bad') + '">' + (d == null ? '—' : (d >= 0 ? '+' : '') + (d * 100).toFixed(2) + '%') + '</td>' +
@@ -679,6 +703,7 @@ function addControlIds(bid){ startJob('/api/coach/control/add', {text:String(bid
 
 refresh();
 setInterval(() => { if (!document.hidden && !JOB) refresh(); }, 10000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden && !JOB) refresh(); });
 </script>
 </body>
 </html>
