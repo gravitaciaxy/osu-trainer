@@ -394,7 +394,11 @@ def _skillset(s):
         return None
     sc = skill_scores(m)
     lab = label_for(s)                  # твоя отметка этой карты с этими модами важнее формул
-    main = [x for x in sc if x["key"] in lab["skills"]] if lab else [x for x in sc if x["main"]][:3]
+    if lab:                             # о навыках, которых не было в выборе (старые отметки), решает формула
+        kn = labels.known(lab)
+        main = [x for x in sc if x["key"] in lab["skills"] or (x["key"] not in kn and x["main"])]
+    else:
+        main = [x for x in sc if x["main"]][:3]
     keys = {x["key"] for x in main}
     fits = []
     for key, lad in LADDERS.items():
@@ -630,6 +634,7 @@ def set_label(pid, chosen=None, skip=False, farm=False):
                 skills=[k for k in skills.SKILLS if k in set(chosen or [])],
                 auto=[x["key"] for x in ss["scores"] if x["main"]][:3],          # что предложил тренер
                 formula=[x["key"] for x in ss["scores"] if x["formula"]][:3],    # что видят одни формулы
+                known=list(skills.SKILLS),                                       # из чего выбирал
                 farm=bool(farm), id=pid, ts=time.time(), title=s["title"], artist=s["artist"], diff=s["diff"], bid=s["bid"],
                 sid=s["sid"],
                 mods=ss["mods"], metrics=play_metrics(s))
@@ -685,7 +690,8 @@ def labels_view():
     labs = sorted(d["labels"].values(), key=lambda x: -x["ts"])
     per = {}
     for lab in labs:
-        user, formula = set(lab["skills"]), set(lab.get("formula", []))
+        kn = labels.known(lab)
+        user, formula = set(lab["skills"]), set(lab.get("formula", [])) & kn
         for k in user | formula:
             p = per.setdefault(k, dict(key=k, title=skills.SKILLS[k]["title"], both=0, extra=0, missed=0))
             p["both" if k in user and k in formula else "extra" if k in formula else "missed"] += 1
@@ -1351,7 +1357,9 @@ def farm_pick(exclude, log):
     co = index.cooc(sets) if index else None
     if co is not None and not co["hits"]:
         co = None
-    for key in farm_skills()[:3]:
+    keys = farm_skills()                # сначала навыки твоих фарм-карт, если их мало - и другие
+    keys += random.sample([k for k in skills.SKILLS if k not in keys], len(skills.SKILLS) - len(keys))
+    for key in keys[:3]:
         cfg = skills.SKILLS[key]
         log("Фарм, как твои отметки: %s, звёзды %.1f–%.1f (твой уровень ~%.1f★)" % (cfg["title"], stars[0], stars[1], c))
         a = trainer.coerce_params(dict(skill=key, stars="%.2f-%.2f" % stars, pool=80, depth=100, crowd_weight=0.5,

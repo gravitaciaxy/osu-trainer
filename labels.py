@@ -40,12 +40,22 @@ METRIC_KEYS = sorted(set(KNN_FEATURES) | {
     "long_runs", "aim_share", "stream_spacing", "nps", "sv_var", "odd_ratio", "slider_anchors", "tap_entropy", "hidden",
     "tap_share", "tap_bpm", "alt_share", "alt_bpm", "alt_run"})
 
+# навыки, появившиеся позже первых отметок (2026-09-26): в отметках без списка known про них ничего не сказано -
+# ни «да», ни «нет», и поправки по ним такие отметки не делают
+NEW_SKILLS = ("bursts", "alt")
+
 GLOBAL_DIR = os.path.join(config.CACHE_DIR, "labels")
 GLOBAL_JSON = os.path.join(GLOBAL_DIR, "global.json")
 TOKEN_FILE = os.path.join(GLOBAL_DIR, "token")
 FETCH_EVERY = 12 * 3600     # программа без тренера берёт общие отметки с сайта не чаще
 MAX_LABELS = 5000
 BATCH_BYTES = 48000         # сайт и nginx принимают запросы до 64 КБ
+
+
+def known(e):
+    """Про какие навыки отметка что-то говорит: выбранные - «да», остальные из этого списка - «нет»."""
+    k = e.get("known") if isinstance(e, dict) else None
+    return set(k) if k else {s for s in skills.SKILLS if s not in NEW_SKILLS}
 
 
 def raw_scores(m):
@@ -75,7 +85,7 @@ class Model:
         for e in entries:
             m = e.get("metrics") if isinstance(e, dict) else None
             if isinstance(m, dict):
-                self.items.append(dict(m=m, skills=set(e.get("skills") or ()), farm=bool(e.get("farm")),
+                self.items.append(dict(m=m, skills=set(e.get("skills") or ()), known=known(e), farm=bool(e.get("farm")),
                                        title=str(e.get("title") or ""), scores=raw_scores(m)))
         self.farm = any(it["farm"] for it in self.items)
         self.calibration = self._calibrate()
@@ -93,7 +103,7 @@ class Model:
         for key, cfg in skills.SKILLS.items():
             mn = cfg["min_score"]
             pts = [(it["scores"][key], key in it["skills"]) for it in self.items
-                   if key in it["scores"] and abs(it["scores"][key] - mn) <= CAL_RANGE]
+                   if key in it["scores"] and key in it["known"] and abs(it["scores"][key] - mn) <= CAL_RANGE]
             pos = sum(1 for _s, y in pts if y)
             neg = len(pts) - pos
             if pos < 3 or neg < 3:
@@ -132,6 +142,8 @@ class Model:
             num = den = 0.0
             best = None
             for w, it in near:
+                if key not in it["known"]:
+                    continue            # в этой отметке про навык ничего не сказано
                 if key == "reading" and bool(m.get("hidden")) != bool(it["m"].get("hidden")):
                     continue            # отметка чтения с HD о карте без HD ничего не говорит (и наоборот)
                 s = it["scores"].get(key, 0.0) + sh
@@ -211,10 +223,13 @@ def clean(e):
         bid, sid = int(e.get("bid") or 0), int(e.get("sid") or 0)
     except (TypeError, ValueError):
         return None
-    return dict(k=str(e.get("k") or "")[:40], skills=[k for k in skills.SKILLS if k in set(e.get("skills") or ())],
-                farm=bool(e.get("farm")), metrics=mm, title=str(e.get("title") or "")[:200],
-                artist=str(e.get("artist") or "")[:200], diff=str(e.get("diff") or "")[:200],
-                mods=str(e.get("mods") or "")[:40], bid=bid, sid=sid)
+    out = dict(k=str(e.get("k") or "")[:40], skills=[k for k in skills.SKILLS if k in set(e.get("skills") or ())],
+               farm=bool(e.get("farm")), metrics=mm, title=str(e.get("title") or "")[:200],
+               artist=str(e.get("artist") or "")[:200], diff=str(e.get("diff") or "")[:200],
+               mods=str(e.get("mods") or "")[:40], bid=bid, sid=sid)
+    if e.get("known"):
+        out["known"] = [k for k in skills.SKILLS if k in set(e["known"])]
+    return out
 
 
 def entry_hash(e):
