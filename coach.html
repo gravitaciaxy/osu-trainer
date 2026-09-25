@@ -300,8 +300,9 @@ function ladderPicker(){
   return opts ? '<div class="actions"><select id="ladsel">' + opts + '</select><button class="btn" onclick="post(\'/api/coach/ladder\', {key:$(\'ladsel\').value})">Добавить лестницу</button></div>' : '';
 }
 function playsTable(rows){
-  return '<div class="tablewrap"><table><tr><th>Когда</th><th>Карта</th><th class="num">★</th><th class="num">Точность</th><th class="num">Промахи</th><th class="num">UR</th><th>Слабее всего</th></tr>' +
+  return '<div class="tablewrap"><table><tr><th>Когда</th><th>Карта</th><th>Тип</th><th class="num">★</th><th class="num">Точность</th><th class="num">Промахи</th><th class="num">UR</th><th>Слабее всего</th></tr>' +
     rows.map(r => '<tr class="click" onclick="openPlay(\'' + r.id + '\')"><td class="num">' + dt(r.ts) + '</td><td>' + mapName(r) + ' ' + mods(r.mods) + '</td>' +
+      '<td class="muted">' + (r.kind || []).map(esc).join(', ') + '</td>' +
       '<td class="num">' + num(r.sr, 2) + '</td><td class="num">' + pct(r.acc, 2) + ' <span class="muted">' + (RANK[r.rank] || '') + '</span></td>' +
       '<td class="num">' + r.misses + (r.breaks ? ' <span class="muted">+' + r.breaks + ' sb</span>' : '') + '</td><td class="num">' + num(r.ur) + '</td>' +
       '<td class="muted">' + (r.weak || []).map(tagName).map(esc).join(', ') + '</td></tr>').join('') + '</table></div>';
@@ -317,6 +318,8 @@ function renderLadders(){
     h += '<div class="steps">' + l.steps.map((s, i) => '<span class="step ' + (i < l.step ? 'done' : i === l.step ? 'cur' : 'lock') + '">' +
       (i < l.step ? '✓ ' : i > l.step ? '🔒 ' : '') + esc(s) + '</span>').join('') + '</div>';
     h += '<p class="muted">' + esc(thrText(l.threshold)) + (l.fails_in_row ? ' Не сдано подряд: ' + l.fails_in_row + '.' : '') + '</p>';
+    if (l.free && l.free.n) h += '<p>Вне тренировок (соло и мульти, ' + l.free.days + ' дней) на этой ступени: ' + l.free.n + ' карт, порог взят на ' + l.free.ok +
+      ', средняя точность ' + pct(l.free.acc) + '. <span class="muted">В зачёт ступени не идёт — только показывает, как ты тянешь её в обычной игре.</span></p>';
     if (l.escape) h += escapeBox(l.key);
     if (l.history.length){
       h += '<h3>Тренировки</h3><div class="tablewrap"><table><tr><th>Когда</th><th>Ступень</th><th>Итог</th><th class="num">Сдано</th><th class="num">Точность</th><th class="num">Промахи</th><th class="num">UR</th></tr>' +
@@ -407,6 +410,7 @@ function playDetail(v){
   h += '<div class="kpi"><div class="v">' + num(sm.ur) + '</div><div class="l">UR</div></div>' +
     '<div class="kpi"><div class="v">' + (sm.mean > 0 ? '+' : '') + num(sm.mean, 1) + '</div><div class="l">сдвиг, мс</div></div>' +
     '<div class="kpi"><div class="v">' + pct(sm.early, 0) + '</div><div class="l">нажатий раньше</div></div></div>';
+  h += skillsetBlock(v.skillset);
   if (a.check) h += '<p class="muted">' + (a.check.diff === 0 ? '✓ Разбор совпал с подсчётом игры нота в ноту.' :
     'Разбор отличается от подсчёта игры на ' + a.check.diff + ' нот(ы)' + (a.info.mods.includes('CL') ? ' — с Classic sliders считаются иначе' : '') + '.') + '</p>';
   h += timeline(a);
@@ -422,6 +426,20 @@ function playDetail(v){
     .sort((x, y) => (y.ratio || 0) - (x.ratio || 0));
   h += '<h3>Паттерны</h3>' + tagTable(tags, sm.err);
   if (v.attempts.length) h += '<h3>Другие попытки на этой карте</h3>' + playsTable(v.attempts.slice().reverse());
+  return h;
+}
+function skillsetBlock(ss){
+  if (!ss) return '';
+  let h = '<h3>Что это за карта</h3><p>' + (ss.main.length ? ss.main.map(x => '<span class="badge acc">' + esc(x.title) + ' ' + x.score + '</span>').join(' ')
+    : '<span class="muted">смешанная — ни один навык не выражен сильно</span>') + '</p>';
+  const facts = ['BPM ' + num(ss.bpm)];
+  if (ss.stream_ratio >= 0.05) facts.push('streams ' + pct(ss.stream_ratio, 0) + ' нот, ' + num(ss.stream_bpm) + ' BPM, самая длинная цепочка ' + ss.max_run);
+  if (ss.burst_ratio >= 0.05) facts.push('bursts ' + pct(ss.burst_ratio, 0) + ' нот, ' + num(ss.burst_bpm) + ' BPM');
+  if (ss.alt_ratio >= 0.05) facts.push('alt ' + pct(ss.alt_ratio, 0) + ' промежутков');
+  facts.push('прыжки ' + pct(ss.aim_share, 0) + ' промежутков');
+  h += '<p class="muted">' + facts.map(esc).join(' · ') + '. Оценки навыков — те же формулы, по которым подбор ищет карты.</p>';
+  if (ss.fits.length) h += '<ul class="plain">' + ss.fits.map(f => '<li><b>' + esc(f.title) + '</b>: ступень ' + (f.step + 1) + ' — ' + esc(f.label) + ' (у карты ' + esc(f.value) + ')' +
+    (f.yours == null ? '' : f.yours === f.step ? ' — <span class="ok">как раз твоя ступень</span>' : f.step > f.yours ? ' — <span class="warn">выше твоей ступени ' + (f.yours + 1) + '</span>' : ' — ниже твоей ступени ' + (f.yours + 1)) + '</li>').join('') + '</ul>';
   return h;
 }
 function timeline(a){
@@ -474,6 +492,14 @@ async function renderProfile(){
     '<div class="kpi"><div class="v">' + num(t.ur) + '</div><div class="l">UR, медиана по картам</div></div><div class="kpi"><div class="v">' + t.hits.toLocaleString('ru') + '</div><div class="l">попаданий</div></div></div>' +
     (t.tags.length ? '<ul class="plain">' + t.tags.map(x => '<li>' + esc(x.name) + ': ' + (x.mean < 0 ? 'спешишь на ' + num(-x.mean) : 'запаздываешь на ' + num(x.mean)) + ' мс</li>').join('') + '</ul>'
       : '<p class="muted">По отдельным паттернам заметного сдвига нет.</p>') + (t.advice ? '<p>' + esc(t.advice) + '</p>' : '') + '</div>';
+  if (v.types && v.types.length){
+    h += '<div class="card"><h2>По типам карт</h2><p class="muted">Тип — главный навык карты по оценкам подбора. Сверху — типы, где точность ниже всего; смотри и на звёзды.</p>' +
+      '<div class="tablewrap"><table><tr><th>Тип</th><th class="num">Карт</th><th class="num">Точность</th><th class="num">Промахи</th><th class="num">★</th><th></th></tr>' +
+      v.types.map(r => { const lad = S.ladder_defs.find(x => x.key === r.ladder);
+        return '<tr><td>' + esc(r.title) + '</td><td class="num">' + r.plays + '</td><td class="num">' + pct(r.acc) + '</td><td class="num">' + num(r.misses, 1) + '</td><td class="num">' + num(r.sr, 2) + '</td>' +
+          '<td class="num">' + (lad ? '<button class="iconbtn" onclick="post(\'/api/coach/ladder\', {key:\'' + r.ladder + '\'}).then(() => switchTab(\'today\'))">Качать</button>' : '') + '</td></tr>'; }).join('') +
+      '</table></div></div>';
+  }
   h += '<div class="card"><h2>Промахи</h2>' + causesBar(v.agg.causes) + (v.insights.length ? '<ul class="plain">' + v.insights.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') + '</div>';
   const hb = v.habits;
   h += '<div class="card"><h2>Привычки</h2>';

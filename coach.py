@@ -24,6 +24,7 @@ import config
 import osu_api
 import pools
 import replay
+import skills
 import trainer
 
 COACH_DIR = os.path.join(config.CACHE_DIR, "coach")
@@ -216,9 +217,14 @@ def analysis(s):
     return a
 
 
+_metrics_cache = {}
+
+
 def map_metrics(file_hash):
-    """Метрики карты (как у подбора) по файлу .osu из игры - для стартовой ступени."""
-    cache = _load(METRICS_JSON, {}) or {}
+    """Метрики карты (как у подбора) по файлу .osu из игры - для скиллсета и стартовой ступени."""
+    cache = _metrics_cache
+    if not cache:
+        cache.update(_load(METRICS_JSON, {}) or {})
     if file_hash in cache and (cache[file_hash] is None or "alt_ratio" in cache[file_hash]):
         return cache[file_hash]                 # записи до появления bursts/alt считаются заново
     path = _files(file_hash)
@@ -277,12 +283,63 @@ def mods_ok(s, mod):
     return not (ms & DIFF_MODS)
 
 
+def skill_scores(m):
+    """Оценки навыков карты 0..100 - те же формулы, по которым подбор ищет карты."""
+    out = []
+    for key, cfg in skills.SKILLS.items():
+        try:
+            v = cfg["score"](m)[0]
+        except (KeyError, TypeError, ValueError, ZeroDivisionError):
+            continue
+        out.append(dict(key=key, title=cfg["title"], score=round(v), main=v >= cfg["min_score"]))
+    out.sort(key=lambda x: -x["score"])
+    return out
+
+
+_skillsets = {}
+
+
+def skillset(s):
+    """К чему относится сыгранная карта: главные навыки и ступени лестниц, на которые она попадает."""
+    if s["id"] not in _skillsets:
+        _skillsets[s["id"]] = _skillset(s)
+    return _skillsets[s["id"]]
+
+
+def _skillset(s):
+    m = map_metrics(s["fileHash"]) if s.get("fileHash") else None
+    if not m:
+        return None
+    sc = skill_scores(m)
+    main = [x for x in sc if x["main"]][:3]
+    keys = {x["key"] for x in main}
+    ms = set(s["mods_list"])
+    fits = []
+    for key, lad in LADDERS.items():
+        mod = lad.get("mod")
+        if mod and not (mod in ms or (mod == "DT" and "NC" in ms)):
+            continue
+        if not mod and ms & DIFF_MODS:
+            continue
+        if not (keys & set(lad["skill"].split(","))) or not meets(lad, m):
+            continue
+        v = param_value(lad, m)
+        step = next((i for i in range(len(lad["steps"])) if in_step(lad, i, v)), None)
+        if step is not None:
+            fits.append(dict(ladder=key, title=lad["title"], step=step, label=step_label(lad, step), value=_fmt(lad, v)))
+    return dict(main=main, scores=sc, fits=fits, bpm=m["bpm"], length=m["length"], stream_ratio=m["stream_ratio"],
+                stream_bpm=m["stream_bpm"], burst_ratio=m.get("burst_ratio"), burst_bpm=m.get("burst_bpm"),
+                alt_ratio=m.get("alt_ratio"), max_run=m["max_run"], aim_share=m["aim_share"])
+
+
 def row(s, a=None):
     """Строка попытки для списков."""
     a = a if a is not None else analysis(s)
+    ss = skillset(s)
     out = dict(id=s["id"], ts=s["ts"], title=s["title"], artist=s["artist"], diff=s["diff"], sr=s["sr"],
                acc=round(s["acc"], 4), rank=s["rank"], misses=s["misses"], breaks=s["breaks"], combo=s["combo"],
-               mods=s["mods_list"], bid=s["bid"], sid=s["sid"], md5=s["md5"], pp=s.get("pp"))
+               mods=s["mods_list"], bid=s["bid"], sid=s["sid"], md5=s["md5"], pp=s.get("pp"),
+               kind=[x["title"] for x in ss["main"][:2]] if ss else [])
     if a and not a.get("error"):
         sm = a["summary"]
         out.update(ur=sm["ur"], mean=sm["mean"], analyzed=True,
@@ -511,7 +568,27 @@ def profile_view():
                                 "сыгранной карте." % (abs(agg["mean"]), "раньше" if agg["mean"] < 0 else "позже"))
         top = [w["tag"] for w in weak[:3]]
         return dict(plays=len(recent), notes=agg["n"], agg=agg, weak=weak, insights=insights(agg), timing=timing,
-                    habits=habits(sessions(sc)), series=daily_series(sc, top), series_names={t: TAG_INFO[t][0] for t in top})
+                    habits=habits(sessions(sc)), series=daily_series(sc, top), series_names={t: TAG_INFO[t][0] for t in top},
+                    types=by_type(recent))
+
+
+def by_type(plays):
+    """Как ты играешь карты разных типов: главный навык карты -> попыток, точность, промахи, звёзды."""
+    groups = {}
+    for s in plays:
+        ss = skillset(s)
+        if not ss or not ss["main"]:
+            continue
+        k = ss["main"][0]["key"]
+        g = groups.setdefault(k, dict(key=k, title=skills.SKILLS[k]["title"], acc=[], misses=[], sr=[]))
+        g["acc"].append(s["acc"])
+        g["misses"].append(s["misses"])
+        g["sr"].append(s["sr"])
+    rows = [dict(key=g["key"], title=g["title"], plays=len(g["acc"]), acc=round(statistics.fmean(g["acc"]), 4),
+                 misses=round(statistics.fmean(g["misses"]), 1), sr=round(statistics.fmean(g["sr"]), 2),
+                 ladder=g["key"] if g["key"] in LADDERS else None)
+            for g in groups.values() if len(g["acc"]) >= 2]
+    return sorted(rows, key=lambda r: r["acc"])
 
 
 def session_list(limit=40):
@@ -555,7 +632,12 @@ def play_view(pid):
         if s["id"] == pid:
             a = analysis(s)
             prev = [row(x) for x in scores() if x["md5"] == s["md5"] and x["id"] != pid]
-            return dict(row=row(s, a), analysis=a, attempts=prev[-10:],
+            ss = skillset(s)
+            if ss:                              # где эта карта на твоих лестницах
+                ladders = load_state()["ladders"]
+                ss = dict(ss, fits=[dict(f, yours=ladders[f["ladder"]]["step"] if f["ladder"] in ladders else None)
+                                    for f in ss["fits"]])
+            return dict(row=row(s, a), analysis=a, attempts=prev[-10:], skillset=ss,
                         weak=weaknesses(aggregate([a]), min_n=12) if a and not a.get("error") else [],
                         insights=insights(aggregate([a])) if a and not a.get("error") else [])
     return None
@@ -846,8 +928,25 @@ def ladder_view(st, key):
     return dict(key=key, title=lad["title"], mod=lad.get("mod"), step=ld["step"], best=ld.get("best", ld["step"]),
                 start=ld.get("start", 0), steps=[step_label(lad, i) for i in range(len(lad["steps"]))],
                 threshold=threshold(st, key), escape=ld.get("escape"), fails_in_row=ld.get("fails_in_row", 0),
-                active=st["active"] == key, history=history,
+                active=st["active"] == key, history=history, free=free_play(st, key),
                 open=next((t for t in reversed(trs) if t["status"] == "open"), None))
+
+
+def free_play(st, key, days=14):
+    """Карты текущей ступени, сыгранные вне тренировок (соло и мультиплеер): в зачёт не идут,
+    но показывают, как ты тянешь эту ступень в обычной игре."""
+    lad, step, thr = LADDERS[key], st["ladders"][key]["step"], threshold(st, key)
+    in_trainings = {m["md5"] for t in st["trainings"] if t["ladder"] == key for m in t["maps"]}
+    now, out = time.time(), []
+    for s in scores():
+        if now - s["ts"] > days * DAY or s["md5"] in in_trainings or s["rank"] < 0:
+            continue
+        ss = skillset(s)
+        if ss and any(f["ladder"] == key and f["step"] == step for f in ss["fits"]):
+            out.append(dict(id=s["id"], title=s["title"], diff=s["diff"], acc=round(s["acc"], 4), misses=s["misses"],
+                            ok=passed(s, thr)))
+    return dict(days=days, plays=out[-8:], n=len(out), ok=sum(1 for x in out if x["ok"]),
+                acc=round(statistics.fmean(x["acc"] for x in out), 4) if out else None)
 
 
 # ------------------------------------------------------ вступительный тест ----
