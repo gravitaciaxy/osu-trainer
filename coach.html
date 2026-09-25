@@ -134,9 +134,11 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER = null, LASTUPD = null, BUSY = false;
 
+const OFFLINE = 'Программа osu!drill не отвечает — похоже, она закрыта. Запусти её (start.bat в папке osu-trainer): страница переподключится сама.';
 async function api(path, body){
   const opt = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'osu-trainer'}, body:JSON.stringify(body)};
-  const r = await fetch(path, opt);
+  let r;
+  try { r = await fetch(path, opt); } catch(e){ throw new Error(OFFLINE); }   /* сеть: программа не запущена */
   const d = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(d.error || ('ошибка ' + r.status));
   return d;
