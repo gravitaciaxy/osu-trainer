@@ -146,6 +146,7 @@ class Bucket:
 BUCKETS = {
     "osu.direct": Bucket(100, 8, 2.0),          # у зеркала 120 в минуту и 10 за 2 с
     "osu.ppy.sh": Bucket(30, 2, 2.0),           # запасной источник .osu; osu! просит не больше 60 в минуту
+    "osu-api": Bucket(50, 3, 2.0),              # официальный API osu! (osu_api): тоже не больше 60 в минуту
     "osucollector.com": Bucket(40, 1, 1.4),     # сайт энтузиаста: по одному запросу, не чаще раза в 1.4 с
 }
 DISABLED = {}                                   # хост -> (причина, до какого времени не обращаться)
@@ -171,11 +172,13 @@ def _disabled(host):
     return bool(item) and time.time() < item[1]
 
 
-def get(url, params=None, stream=False, timeout=30, tries=3, headers=None):
+def get(url, params=None, stream=False, timeout=30, tries=3, headers=None, bucket=None, missing_ok=False):
+    """bucket - имя ограничителя, если у адресов одного хоста разные правила (API osu! и .osu с сайта).
+    missing_ok - на 404 вернуть ответ, а не None: «нет такого» отличается от «сервис не ответил»."""
     host = urllib.parse.urlparse(url).netloc
     if _disabled(host):
         return None
-    bucket = BUCKETS.get(host)
+    bucket = BUCKETS.get(bucket or host)
     for attempt in range(tries):
         if bucket:
             bucket.wait()
@@ -200,6 +203,8 @@ def get(url, params=None, stream=False, timeout=30, tries=3, headers=None):
             r.close()
             disable(host, "доступ запрещён (403)")
             return None
+        if r.status_code == 404 and missing_ok:
+            return r
         if 400 <= r.status_code < 500:
             r.close()
             return None                 # «нет такой карты» повтором не исправить - не тратим запросы

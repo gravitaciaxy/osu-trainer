@@ -148,7 +148,7 @@
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER = null, LASTUPD = null, LASTRND = null, BUSY = false;
+let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER = null, LASTUPD = null, LASTRND = null, LASTPROF = null, BUSY = false;
 
 const OFFLINE = 'Программа osu!drill не отвечает — похоже, она закрыта. Запусти её (start.bat в папке osu-trainer): страница переподключится сама.';
 async function api(path, body){
@@ -163,6 +163,7 @@ const pct = (x, d = 1) => x == null ? '—' : (x * 100).toFixed(d) + '%';
 const num = (x, d = 0) => x == null ? '—' : (+x).toFixed(d);
 function dt(ts){ const d = new Date(ts * 1000); return d.toLocaleDateString('ru', {day:'numeric', month:'short'}) + ' ' + d.toLocaleTimeString('ru', {hour:'2-digit', minute:'2-digit'}); }
 function day(ts){ return new Date(ts * 1000).toLocaleDateString('ru', {day:'numeric', month:'long'}); }
+function dayY(ts){ return new Date(ts * 1000).toLocaleDateString('ru', {day:'numeric', month:'short', year:'numeric'}); }   // старые скоры - с годом
 function mmss(sec){ sec = Math.max(0, Math.round(sec)); return Math.floor(sec / 60) + ':' + String(sec % 60).padStart(2, '0'); }
 function ago(ts){ const s = Date.now() / 1000 - ts; if (s < 90) return 'только что'; if (s < 3600) return Math.round(s / 60) + ' мин назад';
   if (s < 86400) return Math.round(s / 3600) + ' ч назад'; return Math.round(s / 86400) + ' дн назад'; }
@@ -196,7 +197,11 @@ async function refresh(force){
       (S.updated ? ' · обновлено ' + ago(S.updated) : '');
     // следующую случайную карту готовит фон без новых попыток - её тоже надо показать сразу
     const rnd = JSON.stringify(S.random);
-    if (S.updated !== LASTUPD || force || (TAB === 'today' && rnd !== LASTRND)){ LASTUPD = S.updated; LASTRND = rnd; render(); }
+    // и ход проверки профиля osu!: она идёт больше часа, а новых попыток за это время может не быть
+    const pr = (S.control && S.control.profile) || {};
+    const prof = JSON.stringify([pr.run, pr.ts]);
+    if (S.updated !== LASTUPD || force || (TAB === 'today' && rnd !== LASTRND) || (TAB === 'control' && prof !== LASTPROF)){
+      LASTUPD = S.updated; LASTRND = rnd; LASTPROF = prof; render(); }
     maybeAsk();
   } catch(e){ $('error').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; }
 }
@@ -765,21 +770,27 @@ function renderTest(){
 }
 
 /* ============================== «Контрольные» ============================== */
+const SOURCE = {pinned:'закреплён', profile:'из профиля', 'osu!':'из профиля'};
+const shownMods = m => (m || []).filter(x => x !== 'CL');
+const scoreText = o => pct(o.acc, 2) + ' · ' + (o.fc ? '<span class="ok">FC</span>' : o.misses + ' пр.') +
+  (shownMods(o.mods).length ? ' ' + mods(shownMods(o.mods)) : '');
 function controlTable(maps){
   return '<div class="tablewrap"><table><tr><th>Карта</th><th class="num">Старый ты</th><th class="num">Последний контроль</th><th class="num">Разница</th><th></th></tr>' +
     maps.map(m => { const b = m.base, l = m.latest, d = b && l ? l.acc - b.acc : null;
-      return '<tr><td>' + mapName(m) + ' <span class="muted">' + num(m.sr, 2) + '★</span> ' + codeChip(m) + '</td>' +
-        '<td class="num">' + (b ? pct(b.acc, 2) + ' · ' + b.misses + ' пр.' + (b.ts ? '<div class="muted">' + day(b.ts) + (b.source === 'first' ? ' (первый контроль)' : '') + '</div>' : '') : '<span class="muted">нет</span>') + '</td>' +
+      return '<tr><td>' + mapName(m) + ' <span class="muted">' + num(m.sr, 2) + '★' + (b && b.sr && Math.abs(b.sr - m.sr) >= 0.01 ? ', с модами ' + num(b.sr, 2) + '★' : '') + '</span> ' + codeChip(m) +
+        (m.play_mods ? ' <span class="badge warn" title="Старый скор сыгран с этими модами — в зачёт идёт попытка с ними же (HD не важен)">играть с ' + esc(m.play_mods) + '</span>' : '') +
+        (SOURCE[m.source] ? ' <span class="badge">' + SOURCE[m.source] + '</span>' : '') + '</td>' +
+        '<td class="num">' + (b ? scoreText(b) + (b.ts ? '<div class="muted">' + (b.source === 'first' ? day(b.ts) + ' (первый контроль)' : dayY(b.ts)) + '</div>' : '') : '<span class="muted">нет</span>') + '</td>' +
         '<td class="num">' + (l ? pct(l.acc, 2) + ' · ' + l.misses + ' пр.<div class="muted">' + day(l.ts) + '</div>' : '<span class="muted">ещё не играл</span>') + '</td>' +
         '<td class="num ' + (d == null ? '' : d >= 0 ? 'ok' : 'bad') + '">' + (d == null ? '—' : (d >= 0 ? '+' : '') + (d * 100).toFixed(2) + '%') + '</td>' +
         '<td class="num"><button class="iconbtn" onclick="if(confirm(\'Убрать карту из контрольных?\'))post(\'/api/coach/control/remove\', {md5:\'' + m.md5 + '\'})">✕</button></td></tr>'; }).join('') + '</table></div>';
 }
 function renderControl(){
-  const c = S.control;
-  let h = '<div class="card"><h2>Контрольные карты — «старый ты»</h2><p>Закреплённые скоры и старые карты, которые сейчас не получается побить. ' +
+  const c = S.control, typed = $('ctltext') ? $('ctltext').value : '';
+  let h = '<div class="card"><h2>Контрольные карты — «старый ты»</h2><p>Закреплённые скоры, лучшие скоры профиля и старые карты, которые сейчас не получается побить. ' +
     'Их играют только в контрольный день раз в две недели — так сравнение «было — стало» остаётся честным, а в тренировки они не попадают.</p>' +
     '<h3>Добавить по ссылкам</h3><textarea id="ctltext" placeholder="ссылки на карты или номера сложностей, по одной в строке&#10;https://osu.ppy.sh/beatmapsets/1231048#osu/2591748"></textarea>' +
-    '<div class="actions"><button class="btn go" onclick="addControl()">Добавить</button><span class="muted">«Старый ты» берётся из истории lazer; если там нет результата старше 2 месяцев — точкой отсчёта станет первый контрольный день.</span></div></div>';
+    '<div class="actions"><button class="btn go" onclick="addControl()">Добавить</button><span class="muted">«Старый ты» — лучший скор на карте из профиля osu! (после проверки профиля) или из истории lazer; если нет ни того, ни другого — точкой отсчёта станет первый контрольный день.</span></div></div>';
   if (c.maps.length){
     h += '<div class="card"><h2>Контрольных карт: ' + c.maps.length + '</h2>' + controlTable(c.maps) +
       '<div class="actions"><button class="btn ' + (c.due ? 'go' : '') + '" onclick="startJob(\'/api/coach/controlday\', {}, \'Собираю контрольные карты\')">Собрать контрольный день</button>' +
@@ -790,9 +801,58 @@ function renderControl(){
       c.suggest.map(m => '<tr><td>' + mapName(m) + (m.source === 'osu!' ? ' <span class="badge">профиль</span>' : '') + '</td><td class="num">' + pct(m.old.acc, 2) + '<div class="muted">' + day(m.old.ts) + '</div></td><td class="num">' + (m.now ? pct(m.now.acc, 2) : '—') + '</td>' +
         '<td class="num"><button class="iconbtn" onclick="addControlIds(\'' + m.bid + '\')">Добавить</button></td></tr>').join('') + '</table></div></div>';
   }
+  if (c.api && c.api.configured && c.profile) h += profileCard(c.profile);
   h += apiCard(c.api);
   $('tab-control').innerHTML = h;
+  if (typed) $('ctltext').value = typed;          // список перерисовывается во время проверки профиля
 }
+
+/* лучшие скоры из всего профиля osu! (coach.rank_profile) */
+let PSEL = new Set();
+const srText = m => { const o = m.old, k = o.sr != null && Math.abs(o.sr - m.sr) >= 0.01;
+  return num(k ? o.sr : m.sr, 2) + '★' + (k ? '<div class="muted">без модов ' + num(m.sr, 2) + '★</div>' : ''); };
+function profileRow(m, farmRow){
+  const o = m.old, pick = !farmRow && !m.taken;
+  return '<tr><td>' + (pick ? '<input type="checkbox" ' + (PSEL.has(m.bid) ? 'checked ' : '') + 'onchange="pickProfile(' + m.bid + ', this.checked)">' : '') + '</td>' +
+    '<td>' + mapName(m) + ' <a href="https://osu.ppy.sh/b/' + (+m.bid) + '" target="_blank" rel="noopener">↗</a> ' + codeChip(m) +
+    (m.status === 'loved' ? ' <span class="badge">loved</span>' : '') + (m.taken ? ' <span class="badge ok">в контрольных</span>' : '') +
+    (m.mark === false ? ' <span class="badge" title="Ты отметил, что это не фарм">не фарм</span>' :
+      !farmRow && !m.taken && m.farm >= 10 ? ' <span class="badge warn" title="Карта лежит в ' + m.farm_n + ' подборках про фарм на osu!Collector, но в подборках навыков её ещё больше — решай сам">фарм? ' + m.farm_n + '</span>' : '') + '</td>' +
+    '<td class="num">' + srText(m) + '</td><td class="num">' + scoreText(o) + '</td>' +
+    '<td class="num">' + (o.pp ? Math.round(o.pp) : '<span class="muted">—</span>') + '</td>' +
+    '<td class="num">' + dayY(o.ts) + '<div class="muted">попыток: ' + m.plays + '</div></td>' +
+    '<td class="num">' + (farmRow
+      ? (m.mark ? '<span class="muted">твоя отметка</span> <button class="iconbtn" onclick="farmMark(' + m.bid + ', null)">вернуть</button>'
+                : '<span class="muted">фарм-подборок: ' + (m.farm_n || '—') + '</span> <button class="iconbtn" onclick="farmMark(' + m.bid + ', false)">не фарм</button>')
+      : '<button class="iconbtn" title="Спрятать: это фарм" onclick="farmMark(' + m.bid + ', true)">фарм</button>') + '</td></tr>';
+}
+function profileCard(pr){
+  const run = pr.run;
+  let h = '<div class="card"><h2>Лучшие скоры из профиля osu!' + (pr.user ? ' <span class="badge">' + esc(pr.user) + '</span>' : '') + '</h2>' +
+    '<p>Все твои результаты с сыгранных карт, а не только топ по pp. Отбор — по красоте скора: звёзды с модами, точность, промахи и FC; ' +
+    'pp не считаются, поэтому здесь есть и loved-карты. Фарм скрыт — это карты, которые игроки собирают в подборки «farm» и «pp» на osu!Collector. ' +
+    'Если карта попала не туда, поправь кнопкой — твоя отметка важнее.</p>';
+  if (run) h += '<div class="warnbox">Идёт проверка профиля: ' + run.done + ' из ' + run.total + ' карт, осталось около ' +
+    Math.ceil((run.total - run.done) * 1.2 / 60) + ' мин. Список появится в конце.</div>';
+  const again = '<button class="btn" ' + (run ? 'disabled ' : '') + 'onclick="startJob(\'/api/coach/profile\', {}, \'Проверяю профиль osu!\')">' + (pr.ts ? 'Проверить заново' : 'Проверить весь профиль') + '</button>';
+  if (!pr.ts) return h + '<div class="actions">' + again + '<span class="muted">Первый раз — около полутора часов: osu! отдаёт результаты по одной карте за запрос и просит не больше 60 запросов в минуту. Потом — только новые и переигранные карты.</span></div></div>';
+  PSEL = new Set([...PSEL].filter(b => pr.items.some(m => m.bid === b && !m.taken)));
+  h += '<p class="muted">Проверено карт: ' + pr.checked + ' из ' + pr.played + ', результатов: ' + pr.scores + '. Список собран ' + dt(pr.ts) + '.</p>' +
+    '<div class="tablewrap"><table><tr><th></th><th>Карта</th><th class="num">★</th><th class="num">Скор</th><th class="num">pp</th><th class="num">Когда</th><th></th></tr>' +
+    pr.items.map(m => profileRow(m, false)).join('') + '</table></div>' +
+    '<div class="actions"><button class="btn go" id="paddbtn" ' + (PSEL.size ? '' : 'disabled ') + 'onclick="addPicked()">Добавить в контрольные' + (PSEL.size ? ' (' + PSEL.size + ')' : '') + '</button>' +
+    '<button class="btn" onclick="pickTop(10)">Отметить первые 10</button>' + again + '</div>';
+  if (pr.farm_n) h += '<details style="margin-top:12px"><summary class="muted" style="cursor:pointer">Скрыто как фарм: ' + pr.farm_n + (pr.farm_n > pr.farm.length ? ' (показаны первые ' + pr.farm.length + ')' : '') + '</summary>' +
+    '<div class="tablewrap"><table>' + pr.farm.map(m => profileRow(m, true)).join('') + '</table></div></details>';
+  return h + '</div>';
+}
+function pickProfile(bid, on){
+  on ? PSEL.add(bid) : PSEL.delete(bid);
+  const b = $('paddbtn'); b.disabled = !PSEL.size; b.textContent = 'Добавить в контрольные' + (PSEL.size ? ' (' + PSEL.size + ')' : '');
+}
+function pickTop(n){ S.control.profile.items.filter(m => !m.taken).slice(0, n).forEach(m => PSEL.add(m.bid)); renderControl(); }
+function addPicked(){ if (!PSEL.size) return; const ids = [...PSEL]; PSEL.clear(); startJob('/api/coach/control/add', {text:ids.join(' ')}, 'Добавляю контрольные карты'); }
+function farmMark(bid, farm){ PSEL.delete(bid); post('/api/coach/profile/farm', {bid, farm}); }
 function apiCard(api){
   api = api || {configured:false, user:''};
   const form = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">' +

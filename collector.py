@@ -136,8 +136,14 @@ def _brief(c):
 
 def discover(log=_log):
     """Ищет подборки по словам навыков; возвращает {id: сведения о подборке}."""
+    found = _search(SEARCH, log)
+    _save(os.path.join(RAW_DIR, "found.json"), found)
+    return found
+
+
+def _search(words, log=_log):
     found = {}
-    for word in SEARCH:
+    for word in words:
         cursor, pages = None, 0
         while pages < 100:
             params = {"search": word, "perPage": 50}
@@ -153,7 +159,6 @@ def discover(log=_log):
                 break
             cursor = d["nextPageCursor"]
         log("  «%s»: страниц %d, всего подборок %d" % (word, pages, len(found)))
-    _save(os.path.join(RAW_DIR, "found.json"), found)
     return found
 
 
@@ -162,16 +167,21 @@ def chosen(found):
     out = []
     for c in found.values():
         skills = classify(c["name"])
-        modes = {k: v for k, v in c["modes"].items() if isinstance(v, (int, float))}
-        total = sum(modes.values())
-        n = max(c["n"], total)
-        if not skills or not total or modes.get("osu", 0) / total < MIN_OSU:
-            continue
-        if not (MIN_MAPS <= n <= MAX_MAPS):
-            continue
-        out.append(dict(c, skills=skills, n=n))
+        n = _osu_size(c)
+        if skills and n:
+            out.append(dict(c, skills=skills, n=n))
     out.sort(key=lambda c: (-c["fav"], c["id"]))
     return out
+
+
+def _osu_size(c):
+    """Размер подборки, если она в основном из карт osu!standard и разумного размера, иначе None."""
+    modes = {k: v for k, v in c["modes"].items() if isinstance(v, (int, float))}
+    total = sum(modes.values())
+    n = max(c["n"], total)
+    if not total or modes.get("osu", 0) / total < MIN_OSU or not (MIN_MAPS <= n <= MAX_MAPS):
+        return None
+    return n
 
 
 def fetch(c):
@@ -215,6 +225,45 @@ def members(todo, log=_log):
         kept.append((c, maps))
     log("подборок: %d, копий чужих пропущено: %d" % (len(kept), dupes))
     return kept
+
+
+# Подборки «farm», «pp farm», «DT farm»: игроки сами собирают карты, на которых легко набить pp.
+# По ним тренер отличает фарм от честно трудных карт, когда ищет лучшие скоры профиля (coach).
+FARM_JSON = os.path.join(RAW_DIR, "farm.json")
+FARM_SEARCH = ["farm", "pp farm", "pp maps"]
+_FARM_RX = re.compile(r"farm|\bpp\b|\dpp\b|фарм", re.I)
+FARM_TOP = 400                  # самые популярные подборки; дальше - в основном копии и пустышки
+FARM_TTL = 30 * 86400
+
+
+def farm_index(log=_log, refresh=False):
+    """{"maps": {bid: вес}, "count": {bid: подборок}} - карты из подборок про фарм pp, вес как у подборок
+    навыков (_weight). Кэш на 30 дней; первая сборка - около 10 минут (одна подборка в 1.4 с)."""
+    cached = _load(FARM_JSON)
+    if cached and not refresh and time.time() - cached.get("built", 0) < FARM_TTL:
+        return cached
+    found = _search(FARM_SEARCH, log)
+    if not found:                               # сайт не ответил - пустая база сочла бы фарм честными картами
+        log("osu!Collector не ответил — беру прошлую базу фарм-карт" if cached else "osu!Collector не ответил")
+        return cached or {"maps": {}}
+    todo = [dict(c, n=_osu_size(c)) for c in found.values() if _FARM_RX.search(c["name"]) and _osu_size(c)]
+    todo.sort(key=lambda c: (-c["fav"], c["id"]))
+    log("подборок про фарм: %d, беру %d самых популярных" % (len(todo), min(len(todo), FARM_TOP)))
+    todo = todo[:FARM_TOP]
+    for i, c in enumerate(todo, 1):
+        fetch(c)
+        if i % 100 == 0:
+            log("  %d/%d подборок" % (i, len(todo)))
+    weight, count = collections.Counter(), collections.Counter()
+    kept = members(todo, log)
+    for c, bids in kept:
+        for bid in bids:
+            weight[bid] += _weight(c["fav"], len(bids))
+            count[bid] += 1
+    data = dict(built=int(time.time()), collections=len(kept), maps={str(b): round(w, 3) for b, w in weight.items()},
+                count={str(b): n for b, n in count.items()})
+    _save(FARM_JSON, data)
+    return data
 
 
 def fresh_meta(bids):
@@ -371,6 +420,11 @@ class Index:
                 top = max(cols, key=lambda ci: _weight(self.cols[ci][1], self.cols[ci][2]))
                 best = (v, len(cols), s, self.cols[top][0])
         return best
+
+    def presence(self, bid):
+        """Вес карты во всех подборках навыков вместе - знаменатель доли фарма (farm_index)."""
+        i = self.pos.get(bid)
+        return sum(_weight(self.cols[ci][1], self.cols[ci][2]) for ci in self.member[i]) if i is not None else 0.0
 
     def skill_weights(self, keys):
         out = {}

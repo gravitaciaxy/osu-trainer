@@ -408,6 +408,21 @@ def coach_post(path, body):
         return {"id": coach_job(coach.import_pinned).id}
     if path == "/api/coach/unbeaten":
         return {"id": coach_job(coach.find_unbeaten).id}
+    if path == "/api/coach/profile":
+        # отдельный вид задачи: первая проверка профиля идёт больше часа и не должна мешать тренировкам
+        if any(j.kind == "profile" and j.state in ("queued", "running") for j in list(JOBS.values())):
+            raise RuntimeError("Профиль уже проверяется — дождись конца")
+
+        def target(job):
+            i18n.set_lang("ru")
+            return coach.profile_job(job.log)
+        return {"id": new_job("profile", target).id}
+    if path == "/api/coach/profile/farm":
+        bid, farm = str(body.get("bid") or ""), body.get("farm")
+        if not bid.isdigit():
+            raise RuntimeError("Нет такой карты")
+        coach.set_farm_mark(int(bid), farm if farm in (True, False) else None)
+        return {"ok": True}
     raise RuntimeError("Неизвестная команда")
 
 

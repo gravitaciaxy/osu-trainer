@@ -38,6 +38,7 @@ STATE_JSON = os.path.join(COACH_DIR, "state.json")
 SCORES_JSON = os.path.join(COACH_DIR, "scores.json")
 METRICS_JSON = os.path.join(COACH_DIR, "metrics.json")
 LABELS_JSON = os.path.join(COACH_DIR, "labels.json")     # твои отметки навыков карт
+PROFILE_JSON = os.path.join(COACH_DIR, "profile_scores.json")   # все результаты из профиля osu! (кэш проверки)
 
 SESSION_GAP = 30 * 60           # перерыв больше - новая сессия
 NEW_DAYS = 7                    # «новая» карта - не игранная столько дней
@@ -1783,11 +1784,12 @@ def add_control(text, log=print):
     sc = scores()
     local = {s["bid"]: s for s in sc if s.get("bid")}
     cache = pools._bm_cache()
+    prof = _profile_best(load_profile(), _load(PROFILE_SR_JSON, {}) or {})
     added = []
     with _lock:
         st = load_state()
         from_api = {x["md5"]: x for x in (st["control"].get("api_suggest") or {}).get("items", [])}
-        for bid in ids[:30]:
+        for bid in ids[:50]:                    # в списке лучших скоров профиля до 40 карт
             s = local.get(bid)
             if s:
                 info = dict(md5=s["md5"], sid=s["sid"], title=s["title"], artist=s["artist"], version=s["diff"], sr=s["sr"])
@@ -1797,11 +1799,14 @@ def add_control(text, log=print):
                     log("карта %d не найдена" % bid)
                     continue
             md5 = info["md5"]
-            api = from_api.get(md5)
+            api, pb = from_api.get(md5), prof.get(str(bid))
+            # «старый ты» - лучший скор из всего профиля osu!, иначе подсказка «старый ты сильнее» или история lazer
+            old, source = ((_old_from(pb[1], pb[2]), "profile") if pb else (api["old"], "osu!") if api
+                           else (old_best(sc, md5), "manual"))
             st["control"]["maps"][md5] = dict(bid=bid, sid=info["sid"], md5=md5, title=info["title"],
                                               artist=info["artist"], diff=info["version"], sr=info["sr"],
-                                              source="osu!" if api else "manual", added=time.time(),
-                                              old=api["old"] if api else old_best(sc, md5))
+                                              source=source, added=time.time(), old=old)
+            log("добавлена: %s — %s [%s]" % (info["artist"], info["title"], info["version"]))
             added.append(md5)
         pools._save_bm(cache)
         save_state(st)
@@ -1904,6 +1909,254 @@ def find_unbeaten(log):
     return len(items)
 
 
+# Все результаты из профиля osu!. Лучшие скоры бывают и не в топе по pp: там в основном фарм, а
+# красивый скор на трудной карте часто стоит немного pp (loved-карты - вообще ноль). API отдаёт
+# результаты только по одной карте за запрос, поэтому проверка идёт по списку всех сыгранных карт.
+PROFILE_MIN_SR = 3.5            # карты легче не проверяем: даже с DT это ниже лучших скоров
+PROFILE_STATUS = ("ranked", "approved", "loved", "qualified")   # у остальных нет таблицы результатов
+PROFILE_BEAT = 120              # отметка «проверка идёт» свежее этого - второй проверки не начинать
+
+
+def load_profile():
+    return _load(PROFILE_JSON, {}) or {}
+
+
+def scan_profile(log, limit=None):
+    """Результаты со всех сыгранных карт профиля в кэш. Тысячи карт при лимите 50 запросов в минуту -
+    это долго, поэтому кэш пишется по ходу, а повторный запуск спрашивает только новые карты и те,
+    что с прошлого раза переиграны (у них вырос счётчик попыток)."""
+    if not osu_api.configured():
+        raise RuntimeError("Сначала добавь ключи приложения osu! (вкладка «Контрольные»)")
+    p = load_profile()
+    run = p.get("running") or {}
+    if run.get("pid") != os.getpid() and time.time() - run.get("beat", 0) < PROFILE_BEAT:
+        raise RuntimeError("Профиль уже проверяется — дождись конца")
+    u = osu_api.user(api_user())
+    uid = int(u["id"])
+    if p.get("uid") != uid:
+        p = dict(uid=uid, scores={})
+    p["user"] = u.get("username")
+    log("Профиль osu!: %s. Беру список сыгранных карт (%d)..." % (p["user"], u.get("beatmap_playcounts_count") or 0))
+    played = {}
+    for x in osu_api.most_played(uid):
+        b, bs = x.get("beatmap") or {}, x.get("beatmapset") or {}
+        if b.get("mode") != "osu" or b.get("status") not in PROFILE_STATUS:
+            continue
+        played[str(x["beatmap_id"])] = dict(
+            n=int(x.get("count") or 0), sr=round(float(b.get("difficulty_rating") or 0), 2), status=b["status"],
+            sid=b.get("beatmapset_id"), title=bs.get("title", ""), artist=bs.get("artist", ""), diff=b.get("version", ""),
+            creator=bs.get("creator", ""), len=b.get("total_length"))
+    p.update(played=played, listed=time.time())
+    scores = p.setdefault("scores", {})
+    todo = [bid for bid, m in played.items()
+            if m["sr"] >= PROFILE_MIN_SR and (bid not in scores or scores[bid]["n"] < m["n"])]
+    todo.sort(key=lambda b: (-played[b]["n"], -played[b]["sr"]))    # сначала карты, которые ты играл больше
+    todo = todo[:limit] if limit else todo
+    log("Карт с таблицей результатов: %d, проверить: %d (около %d мин)." % (len(played), len(todo), len(todo) * 1.2 / 60 + 1))
+    fails = 0
+    try:
+        for i, bid in enumerate(todo, 1):
+            got = osu_api.map_scores(int(bid), uid)
+            if got is None:
+                fails += 1
+                if fails >= 10:
+                    raise RuntimeError("osu! перестал отвечать: проверено %d из %d. Следующий запуск продолжит с этого места."
+                                       % (i - fails, len(todo)))
+                continue
+            fails = 0
+            scores[bid] = dict(n=played[bid]["n"], at=time.time(),
+                               list=[osu_api.compact(s) for s in got if s.get("ruleset_id", 0) == 0])
+            if i % 20 == 0:
+                p["running"] = dict(pid=os.getpid(), beat=time.time(), done=i, total=len(todo))
+                _save(PROFILE_JSON, p)
+            if i % 50 == 0:                     # заодно здесь срабатывает «Остановить»
+                log("  ...%d из %d, осталось около %d мин" % (i, len(todo), (len(todo) - i) * 1.2 / 60 + 1))
+        p["scanned"] = time.time()
+    finally:                                    # и при остановке проверенное не теряется
+        p.pop("running", None)
+        _save(PROFILE_JSON, p)
+    n = sum(len(x["list"]) for x in scores.values())
+    log("Готово: результатов в профиле — %d на %d картах." % (n, sum(1 for x in scores.values() if x["list"])))
+    return n
+
+
+PROFILE_SR_JSON = os.path.join(COACH_DIR, "profile_sr.json")    # звёзды карт с модами по расчёту osu!
+PROFILE_KEEP = 300              # столько лучших скоров помнить; в показ идут без фарма, по сложности с набора
+PROFILE_SHOW = 40
+# Фарм - по подборкам игроков (collector.farm_index): вес карты в подборках про фарм и его доля среди всех её
+# подборок. Одного веса мало: популярные честные карты (Remote Control, Lionheart) тоже лежат в «pp maps», но
+# ещё больше - в подборках навыков. Пороги сверены с твоими закреплёнными скорами и топом по pp (2026-09-26).
+FARM_MIN, FARM_SHARE = 10.0, 0.4        # фарм: вес от 10 и доля от 40%...
+FARM_SURE = 40.0                        # ...или вес от 40 - такие карты фармят все
+ASSIST_MODS = {"RX", "AP", "AT", "CN", "MG", "TP"}      # игра с помощью - не показатель
+SR_MODS = DIFF_MODS | {"FL"}    # с этими модами звёзды другие
+SR_GUESS = {"DT": 1.4, "HT": 0.75, "HR": 1.08, "EZ": 0.85}     # грубая прикидка до точного расчёта osu!
+
+
+def diff_key(mods):
+    """Моды, от которых зависит трудность, одной строкой ("DTHR"): NC - то же, что DT, DC - что HT."""
+    out = set()
+    for m in mods or ():
+        a = m if isinstance(m, str) else m.get("acronym")
+        a = {"NC": "DT", "DC": "HT"}.get(a, a)
+        if a in DIFF_MODS:
+            out.add(a)
+    return "".join(sorted(out))
+
+
+def quality(s):
+    """Чистота скора одним числом: точность минус промахи (первые дороже остальных), плюс FC."""
+    return s["acc"] - 0.01 * min(s["miss"], 30) ** 0.7 + (0.005 if s["fc"] else 0)
+
+
+def beauty(sr, s):
+    """Насколько скор красивый: звёзды с модами плюс чистота, 1% точности - как 0.1★. pp не участвуют:
+    на фарм-картах они раздуты, а у loved-карт их нет вовсе."""
+    return sr + 10 * (quality(s) - 0.95)
+
+
+def _sr_mods(bid, s):
+    """(ключ кэша, моды для расчёта звёзд) или (None, None), если моды звёзд не меняют."""
+    mods = [m for m in s["mods"] if m["acronym"] in SR_MODS]
+    return ("%s %s" % (bid, json.dumps(mods, sort_keys=True)), mods) if mods else (None, None)
+
+
+def _profile_best(p, exact):
+    """Лучший скор на каждой карте профиля: {bid: (красота, звёзды с модами, скор)}."""
+    played, best = p.get("played") or {}, {}
+    for bid, x in (p.get("scores") or {}).items():
+        m = played.get(bid)
+        if not m:
+            continue
+        for s in x["list"]:
+            if not s["passed"] or ASSIST_MODS & {a["acronym"] for a in s["mods"]}:
+                continue
+            key, mods = _sr_mods(bid, s)
+            sr = m["sr"] if not key else exact.get(key)
+            if sr is None:
+                sr, k = m["sr"], diff_key(mods)
+                for a, f in SR_GUESS.items():
+                    sr *= f if a in k else 1
+            b = beauty(sr, s)
+            if bid not in best or b > best[bid][0]:
+                best[bid] = (b, sr, s)
+    return best
+
+
+def _old_from(sr, s):
+    return dict(acc=s["acc"], misses=s["miss"], fc=s["fc"], rank=s["rank"], pp=s["pp"], ts=s["ts"], sr=round(sr, 2),
+                mods=[m["acronym"] for m in s["mods"]], id=s["id"], source="osu!")
+
+
+def rank_profile(log):
+    """Лучшие скоры профиля по красоте -> st["control"]["profile"]. Фарм только помечается: что прятать,
+    в конце решает твоя отметка (st["control"]["farm"])."""
+    p = load_profile()
+    played = p.get("played") or {}
+    if not p.get("scores"):
+        raise RuntimeError("Сначала проверь профиль osu!")
+    log("Подборки игроков про фарм (osu!Collector)...")
+    fi = collector.farm_index(log)
+    farm, farm_n, idx = fi.get("maps") or {}, fi.get("count") or {}, collector.load()
+    exact = _load(PROFILE_SR_JSON, {}) or {}
+    best = _profile_best(p, exact)
+    top = sorted(best, key=lambda b: -best[b][0])[:PROFILE_KEEP]
+    need = {}
+    for bid in top:
+        for s in p["scores"][bid]["list"]:
+            key, mods = _sr_mods(bid, s)
+            if key and key not in exact:
+                need[key] = (int(bid), mods)
+    if need:
+        log("Звёзды с модами по расчёту osu!: %d (около %d мин)..." % (len(need), len(need) * 1.2 / 60 + 1))
+        for i, (key, (bid, mods)) in enumerate(need.items(), 1):
+            sr = osu_api.star_rating(bid, mods)
+            if sr is not None:
+                exact[key] = round(sr, 2)
+            if i % 50 == 0:
+                _save(PROFILE_SR_JSON, exact)
+                log("  ...%d из %d" % (i, len(need)))
+        _save(PROFILE_SR_JSON, exact)
+        best = _profile_best(p, exact)
+        top = sorted(best, key=lambda b: -best[b][0])[:PROFILE_KEEP]
+    items = []
+    for bid in top:
+        b, sr, s = best[bid]
+        m = played[bid]
+        fw = float(farm.get(bid, 0))
+        seen = fw + (idx.presence(int(bid)) if idx else 0.0)
+        items.append(dict(bid=int(bid), sid=m["sid"], title=m["title"], artist=m["artist"], diff=m["diff"],
+                          creator=m["creator"], status=m["status"], plays=m["n"], sr=m["sr"], beauty=round(b, 3),
+                          farm=round(fw, 2), farm_n=int(farm_n.get(bid, 0)), farm_share=round(fw / seen, 2) if fw else 0.0,
+                          old=_old_from(sr, s)))
+    info = dict(ts=time.time(), user=p.get("user"), scanned=p.get("scanned"), played=len(played),
+                checked=len(p["scores"]), scores=sum(len(x["list"]) for x in p["scores"].values()), items=items)
+    with _lock:
+        st = load_state()
+        st["control"]["profile"] = info
+        save_state(st)
+    shown = osu_profile_view(st["control"])
+    log("Лучших скоров без фарма: %d (фарм скрыт: %d)." % (len(shown["items"]), shown["farm_n"]))
+    return len(shown["items"])
+
+
+def profile_job(log):
+    scan_profile(log)
+    return rank_profile(log)
+
+
+def is_farm_item(ctl, it):
+    mark = (ctl.get("farm") or {}).get(str(it["bid"]))
+    if mark is not None:
+        return mark
+    return it["farm"] >= FARM_SURE or (it["farm"] >= FARM_MIN and it.get("farm_share", 1.0) >= FARM_SHARE)
+
+
+def set_farm_mark(bid, farm):
+    """Твоя отметка «фарм / не фарм» для карты из лучших скоров; None - снова решают подборки игроков."""
+    with _lock:
+        st = load_state()
+        marks = st["control"].setdefault("farm", {})
+        if farm is None:
+            marks.pop(str(int(bid)), None)
+        else:
+            marks[str(int(bid))] = bool(farm)
+        save_state(st)
+
+
+_run_seen = {}
+
+
+def profile_run():
+    """Идущая проверка профиля (в этом или другом процессе программы): {done, total} или None."""
+    try:
+        mtime = os.path.getmtime(PROFILE_JSON)
+    except OSError:
+        return None
+    if time.time() - mtime > PROFILE_BEAT:
+        return None
+    if _run_seen.get("mtime") != mtime:
+        _run_seen.update(mtime=mtime, run=load_profile().get("running"))
+    run = _run_seen.get("run")
+    return dict(done=run["done"], total=run["total"]) if run and time.time() - run["beat"] < PROFILE_BEAT else None
+
+
+def osu_profile_view(ctl):
+    pr = ctl.get("profile") or {}
+    marks = ctl.get("farm") or {}
+    taken = {m.get("bid") for m in ctl["maps"].values()}
+    items, farm, sets = [], [], set()
+    for it in pr.get("items", []):
+        row = dict(it, mark=marks.get(str(it["bid"])), taken=it["bid"] in taken)
+        if is_farm_item(ctl, it) and not row["taken"]:     # уже взятая в контрольные - твой выбор, не прячем
+            farm.append(row)
+        elif it["sid"] not in sets and len(items) < PROFILE_SHOW:
+            sets.add(it["sid"])                 # одна сложность с набора - лучшая
+            items.append(row)
+    return dict({k: v for k, v in pr.items() if k != "items"}, items=items, farm=farm[:30], farm_n=len(farm),
+                run=profile_run())
+
+
 def remove_control(md5):
     with _lock:
         st = load_state()
@@ -1933,13 +2186,16 @@ def evaluate_control(st, sc):
     for md5, m in ctl["maps"].items():
         if not m.get("old"):
             m["old"] = old_best(sc, md5) or m.get("old")
+    # сравнение честное, только если моды трудности те же: старый скор с DT сверяется с попыткой с DT (HD - не важен)
+    need = {md5: diff_key(m["old"].get("mods")) for md5, m in ctl["maps"].items() if m.get("old")}
     for day in ctl["days"]:
         firsts = {}
         for s in sc:
-            if s["md5"] in day["md5s"] and s["md5"] not in firsts and day["created"] <= s["ts"] <= day["created"] + 3 * DAY:
+            if s["md5"] in day["md5s"] and s["md5"] not in firsts and day["created"] <= s["ts"] <= day["created"] + 3 * DAY \
+                    and need.get(s["md5"], diff_key(s["mods_list"])) == diff_key(s["mods_list"]):
                 firsts[s["md5"]] = s
-        day["results"] = {md5: dict(id=s["id"], acc=round(s["acc"], 4), misses=s["misses"], ts=s["ts"], rank=s["rank"])
-                          for md5, s in firsts.items()}
+        day["results"] = {md5: dict(id=s["id"], acc=round(s["acc"], 4), misses=s["misses"], ts=s["ts"], rank=s["rank"],
+                                    mods=s["mods_list"]) for md5, s in firsts.items()}
 
 
 def control_view(st, sc):
@@ -1951,7 +2207,8 @@ def control_view(st, sc):
         hist = [dict(ts=d["created"], **d["results"][md5]) for d in days if md5 in d.get("results", {})]
         base = m.get("old") or (dict(acc=hist[0]["acc"], misses=hist[0]["misses"], ts=hist[0]["ts"], source="first")
                                 if hist else None)
-        rows.append(dict(m, history=hist, base=base, latest=hist[-1] if hist else None))
+        rows.append(dict(m, history=hist, base=base, latest=hist[-1] if hist else None,
+                         play_mods=diff_key((m.get("old") or {}).get("mods"))))
     gaps = [r["latest"]["acc"] - r["base"]["acc"] for r in rows if r["latest"] and r["base"] and r["base"].get("source") != "first"]
     suggest = auto_control(st, sc)
     have = set(ctl["maps"]) | {x["md5"] for x in suggest}
@@ -1962,7 +2219,8 @@ def control_view(st, sc):
                 days_left=None if last is None else max(0, CONTROL_EVERY_DAYS - int((time.time() - last) // DAY)),
                 gap=round(statistics.fmean(gaps), 4) if gaps else None, suggest=suggest,
                 api=dict(configured=osu_api.configured(), user=str(config.load().get("osu_user") or ""),
-                         checked=(ctl.get("api_suggest") or {}).get("ts")))
+                         checked=(ctl.get("api_suggest") or {}).get("ts")),
+                profile=osu_profile_view(ctl))
 
 
 # ------------------------------------------------------------- витрина ----
