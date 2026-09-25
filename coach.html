@@ -107,6 +107,7 @@
   <button data-tab="today" class="on">Сегодня</button>
   <button data-tab="ladders">Лестницы</button>
   <button data-tab="review">Разборы</button>
+  <button data-tab="profile">Профиль</button>
   <button data-tab="progress">Прогресс</button>
   <button data-tab="test">Тест</button>
   <button data-tab="control">Контрольные</button>
@@ -116,6 +117,7 @@
   <section id="tab-today"></section>
   <section id="tab-ladders" hidden></section>
   <section id="tab-review" hidden></section>
+  <section id="tab-profile" hidden></section>
   <section id="tab-progress" hidden></section>
   <section id="tab-test" hidden></section>
   <section id="tab-control" hidden></section>
@@ -168,7 +170,7 @@ async function refresh(force){
 }
 function render(){
   if (!S) return;
-  ({today:renderToday, ladders:renderLadders, review:renderReview, progress:renderProgress, test:renderTest, control:renderControl}[TAB])();
+  ({today:renderToday, ladders:renderLadders, review:renderReview, profile:renderProfile, progress:renderProgress, test:renderTest, control:renderControl}[TAB])();
 }
 document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   TAB = b.dataset.tab;
@@ -262,9 +264,16 @@ function renderToday(){
       h += '</div>';
     } else if (p.kind === 'training'){
       h += '<div class="card">' + trainingBlock(p) + '</div>';
+    } else if (p.kind === 'focus'){
+      h += '<div class="card"><h2>Слабое место недели</h2><p><b>' + esc(p.name) + '</b> — ' + esc(p.text) + '.</p>' +
+        '<p class="muted">По ' + p.plays + ' попыткам за ' + p.days + ' дней, соло и мультиплеер. Сложность карт учтена: паттерн сравнивается с остальной картой.</p>' +
+        (p.is_active ? '<p class="ok">Твоя основная лестница — как раз про это.</p>'
+          : '<div class="actions"><button class="btn go" onclick="post(\'/api/coach/ladder\', {key:\'' + p.ladder + '\'})">Качать: ' + esc(p.ladder_title) + '</button>' +
+            '<button class="btn" onclick="switchTab(\'profile\')">Профиль</button></div>') + '</div>';
     } else if (p.kind === 'free'){
       const s = S.sessions[0];
-      h += '<div class="card"><h2>Свободная игра</h2><p>Играй что хочешь — каждая попытка разбирается сама, как только lazer её сохранит.</p>' +
+      h += '<div class="card"><h2>Свободная игра</h2><p>Играй что хочешь — соло или мультиплеер: каждая попытка разбирается сама, как только lazer её сохранит.</p>' +
+        (p.habits && p.habits.length ? '<ul class="plain">' + p.habits.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') +
         (s ? '<p class="muted">Последняя сессия: ' + dt(s.start) + ', карт: ' + s.plays + ', точность ' + pct(s.acc) +
           (s.weak.length ? ', слабое место — ' + esc(s.weak[0]) : '') + '</p><div class="actions"><button class="btn" onclick="openSession(\'' + s.id + '\')">Разбор сессии</button></div>' : '') + '</div>';
     } else if (p.kind === 'control'){
@@ -436,6 +445,45 @@ function timeline(a){
     '<span><i style="background:var(--c-meh)"></i>50</span><span><i style="background:var(--c-miss)"></i>промах</span><span><i style="background:#ff66aa55"></i>худшие места</span>' +
     '<span>полоса снизу — ошибки по десятым долям карты</span></div>';
   return s;
+}
+
+/* ============================== «Профиль» ============================== */
+async function renderProfile(){
+  $('tab-profile').innerHTML = '<div class="card"><p class="muted">считаю…</p></div>';
+  let v; try { v = await api('/api/coach/profile'); } catch(e){ $('tab-profile').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; return; }
+  if (!v.plays){ $('tab-profile').innerHTML = '<div class="card"><p>За последние 30 дней попыток нет.</p></div>'; return; }
+  let h = '<div class="grid">';
+  h += '<div class="card"><h2>Слабые места за 30 дней</h2><p class="muted">' + v.plays + ' попыток, ' + v.notes.toLocaleString('ru') + ' нот, соло и мультиплеер. ' +
+    'Считается по каждой карте отдельно — паттерн против остальной той же карты, — так сложные карты не выдают свои паттерны за твои слабости.</p>';
+  if (!v.weak.length) h += '<p class="muted">Явных слабых мест нет — ошибки распределены ровно.</p>';
+  for (const w of v.weak){
+    let tr = '';
+    if (w.week != null && w.before != null){ const d = w.week - w.before;
+      tr = ' · за неделю: ' + num(w.before, 2) + '× → <b class="' + (d <= -0.1 ? 'ok' : d >= 0.1 ? 'bad' : '') + '">' + num(w.week, 2) + '×</b>'; }
+    const lad = S.ladder_defs.find(x => x.key === w.ladder);
+    h += '<div class="weak"><b>' + esc(w.name) + ' — ' + num(w.ratio, 2) + '×</b><span>' + esc(w.text) + ' · нот: ' + w.n.toLocaleString('ru') + tr + '</span>' +
+      (lad ? '<div class="actions" style="margin-top:4px"><button class="btn small" onclick="post(\'/api/coach/ladder\', {key:\'' + w.ladder + '\'}).then(() => switchTab(\'today\'))">Качать: ' + esc(lad.title) + '</button></div>' : '') + '</div>';
+  }
+  h += '</div>';
+  const cols = ['#ff66aa', '#66ccff', '#ffcc66'];
+  const series = Object.entries(v.series).map(([tag, pts], i) => ({name:v.series_names[tag], color:cols[i % 3], points:pts.map(p => [p.ts, p.ratio, p.n + ' нот'])}));
+  h += '<div class="card"><h2>Слабые места по дням</h2>' + chart(series, {fmt:y => y.toFixed(1) + '×'}) +
+    '<p class="muted">1,0× — как остальная карта. Линия вниз — слабость уходит. Точка появляется, если за день набралось хотя бы 30 нот паттерна.</p></div>';
+  const t = v.timing;
+  h += '<div class="card"><h2>Тайминг</h2><div class="kpis"><div class="kpi"><div class="v">' + (t.mean > 0 ? '+' : '') + num(t.mean, 1) + '</div><div class="l">сдвиг нажатий, мс</div></div>' +
+    '<div class="kpi"><div class="v">' + num(t.ur) + '</div><div class="l">UR, медиана по картам</div></div><div class="kpi"><div class="v">' + t.hits.toLocaleString('ru') + '</div><div class="l">попаданий</div></div></div>' +
+    (t.tags.length ? '<ul class="plain">' + t.tags.map(x => '<li>' + esc(x.name) + ': ' + (x.mean < 0 ? 'спешишь на ' + num(-x.mean) : 'запаздываешь на ' + num(x.mean)) + ' мс</li>').join('') + '</ul>'
+      : '<p class="muted">По отдельным паттернам заметного сдвига нет.</p>') + (t.advice ? '<p>' + esc(t.advice) + '</p>' : '') + '</div>';
+  h += '<div class="card"><h2>Промахи</h2>' + causesBar(v.agg.causes) + (v.insights.length ? '<ul class="plain">' + v.insights.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') + '</div>';
+  const hb = v.habits;
+  h += '<div class="card"><h2>Привычки</h2>';
+  if (hb.buckets.length){
+    h += '<p class="muted">Точность карты против средней по её сессии, по ' + hb.sessions + ' сессиям из 5+ карт:</p><div class="tablewrap"><table>' +
+      hb.buckets.map(b => '<tr><td>' + esc(b.label) + '</td><td class="num ' + (b.delta <= -0.015 ? 'bad' : b.delta >= 0.015 ? 'ok' : '') + '">' + (b.delta >= 0 ? '+' : '') + (b.delta * 100).toFixed(1) + '%</td><td class="num muted">' + b.n + ' карт</td></tr>').join('') + '</table></div>';
+  }
+  h += (hb.lines.length ? '<ul class="plain">' + hb.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '<p class="muted">Явного эффекта разминки или усталости пока не видно.</p>') + '</div>';
+  h += '</div>';
+  $('tab-profile').innerHTML = h;
 }
 
 /* ============================== «Прогресс» ============================== */

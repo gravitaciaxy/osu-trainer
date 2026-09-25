@@ -482,6 +482,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send(200, coach.state_view())
             if url.path == "/api/coach/progress":
                 return self._send(200, coach.progress_view())
+            if url.path == "/api/coach/profile":
+                return self._send(200, coach.profile_view())
             if url.path in ("/api/coach/play", "/api/coach/session"):
                 view = (coach.play_view if url.path.endswith("play") else coach.session_view)(q.get("id", ""))
                 return self._send(200 if view else 404, view or {"error": "not found"})

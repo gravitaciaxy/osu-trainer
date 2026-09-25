@@ -297,9 +297,14 @@ def row(s, a=None):
 
 
 def aggregate(analyses):
-    """Сумма разборов: ошибки по паттернам, причины промахов, тайминг, отрезки, прицел."""
+    """Сумма разборов: ошибки по паттернам, причины промахов, тайминг, отрезки, прицел.
+
+    «Во сколько раз больше ошибок» (ratio) считается внутри каждой попытки - паттерн против всей той же
+    карты - и потом усредняется: так тяжёлая карта с кучей ошибок везде не выдаёт свои паттерны за
+    твои слабые места."""
     tot = dict(n=0, w=0.0, great=0, ok=0, meh=0, miss=0)
     tags, causes, sections = {}, dict(skip=0, timing=0, aim=0, noclick=0), [[0, 0.0] for _ in range(10)]
+    norm = {}
     offs_w = offs_n = 0.0
     ur_list = []
     over = under = jumps = 0
@@ -328,6 +333,11 @@ def aggregate(analyses):
                 h = v["n"] - v["miss"]
                 t["mean_w"] += v["mean"] * h
                 t["mean_n"] += h
+            if sm["err"] > 0 and v["n"] >= 8:
+                w = min(v["n"], 200)
+                nr = norm.setdefault(tg, [0.0, 0.0])
+                nr[0] += w * v["err"] / sm["err"]
+                nr[1] += w
         for i, sec in enumerate(a["sections"][:10]):
             if sec.get("n"):
                 sections[i][0] += sec["n"]
@@ -341,8 +351,10 @@ def aggregate(analyses):
     tag_rows = []
     for tg, t in tags.items():
         r = t["w"] / t["n"] if t["n"] else 0
+        nr = norm.get(tg)
+        ratio = nr[0] / nr[1] if nr and nr[1] else (r / rate if rate else None)
         tag_rows.append(dict(tag=tg, name=TAG_INFO.get(tg, (tg, None))[0], n=t["n"], rate=round(r, 4),
-                             ratio=round(r / rate, 2) if rate else None, miss=t["miss"],
+                             ratio=round(ratio, 2) if ratio is not None else None, miss=t["miss"],
                              mean=round(t["mean_w"] / t["mean_n"], 1) if t["mean_n"] else None,
                              ladder=TAG_INFO.get(tg, (None, None))[1]))
     tag_rows.sort(key=lambda x: -(x["ratio"] or 0))
@@ -357,7 +369,7 @@ def weaknesses(agg, min_n=25):
     """Слабые места с объяснением и лестницей, которую стоит качать."""
     out = []
     for t in agg["tags"]:
-        if t["n"] < min_n or not t["ratio"] or t["ratio"] < 1.2 or t["rate"] - agg["rate"] < 0.01:
+        if t["n"] < min_n or not t["ratio"] or t["ratio"] < 1.2:
             continue
         text = "ошибок в %.1f раза больше, чем в среднем" % t["ratio"]
         if t["mean"] is not None and t["mean"] <= -6:
@@ -411,6 +423,95 @@ def sessions(sc=None):
     if cur:
         groups.append(cur)
     return groups
+
+
+# ------------------------------------------------------------- профиль ----
+
+def habits(groups):
+    """Привычки по сессиям: нужна ли разминка и после скольких карт падает точность.
+    Точность каждой карты сравнивается со средней по её же сессии."""
+    rel, first, rest, used = {}, [], [], 0
+    for g in groups:
+        if len(g) < 5:
+            continue
+        used += 1
+        m = statistics.fmean(s["acc"] for s in g)
+        for i, s in enumerate(g):
+            rel.setdefault(min(i // 3, 3), []).append(s["acc"] - m)
+        first += [s["acc"] - m for s in g[:2]]
+        rest += [s["acc"] - m for s in g[2:]]
+    out = dict(sessions=used, lines=[], buckets=[])
+    if used < 3:
+        out["lines"].append("Для выводов о разминке и усталости нужно хотя бы 3 сессии по 5+ карт — пока их %d." % used)
+        return out
+    labels = ["карты 1–3", "карты 4–6", "карты 7–9", "10-я и дальше"]
+    out["buckets"] = [dict(label=labels[b], delta=round(statistics.fmean(v), 4), n=len(v)) for b, v in sorted(rel.items())]
+    warm = statistics.fmean(first) - statistics.fmean(rest)
+    if warm <= -0.015:
+        out["lines"].append("Первые две карты сессии у тебя в среднем на %.1f%% хуже остальных — разминка нужна." % (-warm * 100))
+    elif warm >= 0.015:
+        out["lines"].append("Первые две карты сессии даже лучше остальных (+%.1f%%): к концу сессии ты устаёшь сильнее, "
+                            "чем разогреваешься." % (warm * 100))
+    for b in sorted(rel)[1:]:
+        v = rel[b]
+        if len(v) >= 5 and statistics.fmean(v) <= -0.02:
+            out["lines"].append("С %d-й карты сессии точность в среднем на %.1f%% ниже обычной — это хороший момент "
+                                "для перерыва." % (3 * b + 1, -statistics.fmean(v) * 100))
+            break
+    return out
+
+
+def daily_series(sc, tags, days=21):
+    """Индекс слабости паттернов по дням - чтобы было видно, уходит ли слабость."""
+    out = {t: [] for t in tags}
+    now = time.time()
+    for d in range(days - 1, -1, -1):
+        lo, hi = now - (d + 1) * DAY, now - d * DAY
+        an = [analysis(s) for s in sc if lo <= s["ts"] < hi]
+        if not an:
+            continue
+        by = {t["tag"]: t for t in aggregate(an)["tags"]}
+        for tg in tags:
+            t = by.get(tg)
+            if t and t["n"] >= 30 and t["ratio"]:
+                out[tg].append(dict(ts=hi, ratio=t["ratio"], n=t["n"]))
+    return out
+
+
+def focus(sc=None, days=7):
+    """Слабое место последних дней (для «Сегодня»)."""
+    sc = sc if sc is not None else scores()
+    now = time.time()
+    an = [analysis(s) for s in sc if now - s["ts"] <= days * DAY]
+    wk = weaknesses(aggregate(an), min_n=40)
+    top = next((w for w in wk if w["ladder"]), None)
+    return dict(top, days=days, plays=len(an)) if top else None
+
+
+def profile_view():
+    """Профиль за 30 дней: слабые места (и сдвиг за неделю), тайминг, промахи, привычки, рост по дням."""
+    with _lock:
+        sc = scores()
+        now = time.time()
+        recent = [s for s in sc if now - s["ts"] <= 30 * DAY]
+        agg = aggregate([analysis(s) for s in recent])
+        weak = weaknesses(agg, min_n=40)
+        new = {t["tag"]: t for t in aggregate([analysis(s) for s in recent if now - s["ts"] <= 7 * DAY])["tags"]}
+        old = {t["tag"]: t for t in aggregate([analysis(s) for s in recent if now - s["ts"] > 7 * DAY])["tags"]}
+        for w in weak:
+            a, b = new.get(w["tag"]), old.get(w["tag"])
+            if a and b and a["n"] >= 30 and b["n"] >= 30:
+                w["week"], w["before"] = a["ratio"], b["ratio"]
+        timing = dict(mean=agg["mean"], ur=agg["ur"], hits=agg["n"] - agg["counts"]["miss"],
+                      tags=[dict(name=t["name"], mean=t["mean"], n=t["n"]) for t in agg["tags"]
+                            if t["mean"] is not None and t["n"] >= 50 and abs(t["mean"]) >= 5])
+        if agg["mean"] is not None and abs(agg["mean"]) >= 5 and timing["hits"] >= 1500:
+            timing["advice"] = ("Ты стабильно нажимаешь на %.0f мс %s ноты. Если так на всех картах, дело может быть "
+                                "в смещении звука (offset): в настройках аудио lazer его можно откалибровать по последней "
+                                "сыгранной карте." % (abs(agg["mean"]), "раньше" if agg["mean"] < 0 else "позже"))
+        top = [w["tag"] for w in weak[:3]]
+        return dict(plays=len(recent), notes=agg["n"], agg=agg, weak=weak, insights=insights(agg), timing=timing,
+                    habits=habits(sessions(sc)), series=daily_series(sc, top), series_names={t: TAG_INFO[t][0] for t in top})
 
 
 def session_list(limit=40):
@@ -1110,7 +1211,11 @@ def plan(st, sc):
                           label=lv["steps"][max(0, lv["step"] - 1)], has=bool(lv["open"] and lv["open"].get("warmup"))))
         items.append(dict(kind="training", ladder=key, title=lv["title"], step=lv["step"], label=lv["steps"][lv["step"]],
                           open=lv["open"], threshold=lv["threshold"], escape=lv["escape"]))
-    items.append(dict(kind="free"))
+    f = focus(sc)
+    if f:
+        items.append(dict(kind="focus", active=key, is_active=(f["ladder"] == key),
+                          ladder_title=LADDERS[f["ladder"]]["title"], **f))
+    items.append(dict(kind="free", habits=habits(sessions(sc))["lines"]))
     cv = control_view(st, sc)
     items.append(dict(kind="control", due=cv["due"], days_left=cv["days_left"], maps=len(cv["maps"])))
     return items
