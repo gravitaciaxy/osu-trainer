@@ -396,6 +396,9 @@ def score_candidate(c, scorer, a):
         if a.stream_bpm[0] is not None:
             if not (a.stream_bpm[0] <= m["stream_bpm"] <= a.stream_bpm[1]):
                 return None
+        accept = getattr(a, "metric_filter", None)      # ступень лестницы тренера
+        if accept and not accept(m):
+            return None
         score, why, extra = scorer(m, c)
         out = dict(c)
         if c.get("src") == "collector":         # в базе коллекций названий нет - они есть в самом .osu
@@ -684,6 +687,9 @@ def select(a, log=print):
         else:
             seed = gather_crowd(index, keys, co, ids, a, stars, have_md5, log) if index else []
             cands = gather_online(queries, a, stars, have_md5, log, seed)
+        exclude = getattr(a, "exclude_md5", None)       # тренер: недавно сыгранные и контрольные карты
+        if exclude:
+            cands = [c for c in cands if c["md5"] not in exclude]
         if not cands:
             raise RuntimeError(_("Кандидатов не найдено - ослабь фильтры"))
 

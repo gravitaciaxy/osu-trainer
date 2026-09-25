@@ -22,7 +22,7 @@ function fileFormat(path) {
       'Обнови osu!drill (или osu!lazer) - запись отменена, база не тронута.');
     process.exit(3);
   }
-  const readOnly = cmd === 'list' || cmd === 'local';
+  const readOnly = cmd === 'list' || cmd === 'local' || cmd === 'scores';
   const realm = await Realm.open({ path: realmPath, readOnly });
   if (cmd === 'list') {
     const out = realm.objects('BeatmapCollection').map(c => ({
@@ -40,6 +40,30 @@ function fileFormat(path) {
         diff: b.DifficultyName, ruleset: b.Ruleset ? b.Ruleset.ShortName : '?',
         title: b.Metadata ? b.Metadata.Title : '', artist: b.Metadata ? b.Metadata.Artist : '',
         tags: b.Metadata ? b.Metadata.Tags : '',
+      });
+    }
+    fs.writeFileSync(arg, JSON.stringify(out));
+    console.log(out.length);
+  } else if (cmd === 'scores') {
+    // результаты osu!standard для тренера: только чтение, файлы повторов и .osu - по хэшам в files/
+    const out = [];
+    for (const s of realm.objects('Score').filtered('Ruleset.ShortName == "osu" AND DeletePending == false')) {
+      const b = s.BeatmapInfo;
+      const replay = s.Files.find(f => /\.osr$/i.test(f.Filename || ''));
+      const d = b && b.Difficulty;
+      out.push({
+        id: String(s.ID), date: s.Date.toISOString(), rank: s.Rank, acc: s.Accuracy,
+        score: s.TotalScore, combo: s.MaxCombo, pp: s.PP, legacy: s.IsLegacyScore,
+        mods: s.Mods || '[]', stats: s.Statistics || '{}', maxStats: s.MaximumStatistics || '{}',
+        replay: replay && replay.File ? replay.File.Hash : null, fileHash: s.BeatmapHash,
+        md5: b ? b.MD5Hash : null, bid: b ? b.OnlineID : 0,
+        sid: b && b.BeatmapSet ? b.BeatmapSet.OnlineID : 0,
+        sr: b ? +b.StarRating.toFixed(2) : 0, bpm: b ? +b.BPM.toFixed(0) : 0,
+        len: b ? +(b.Length / 1000).toFixed(0) : 0, diff: b ? b.DifficultyName : '',
+        title: b && b.Metadata ? b.Metadata.Title : '', artist: b && b.Metadata ? b.Metadata.Artist : '',
+        mapper: b && b.Metadata && b.Metadata.Author ? b.Metadata.Author.Username : '',
+        cs: d ? d.CircleSize : 0, ar: d ? d.ApproachRate : 0, od: d ? d.OverallDifficulty : 0,
+        user: s.User ? s.User.Username : '', uid: s.User ? s.User.OnlineID : 0,
       });
     }
     fs.writeFileSync(arg, JSON.stringify(out));
@@ -74,7 +98,7 @@ function fileFormat(path) {
     });
     console.log(JSON.stringify({ removed: n }));
   } else {
-    console.error('usage: list | local <out.json> | add <payload.json> | remove <name>');
+    console.error('usage: list | local <out.json> | scores <out.json> | add <payload.json> | remove <name>');
     process.exit(2);
   }
   realm.close();

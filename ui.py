@@ -26,6 +26,7 @@ import webbrowser
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
+import coach  # noqa: E402
 import collector  # noqa: E402
 import config  # noqa: E402
 import feedback  # noqa: E402
@@ -304,7 +305,7 @@ def init_data(lang):
                      desc_es=v["desc_es"])
                 for k, v in skills.SKILLS.items()],
         genres=[dict(id=k, ru=v[0], en=v[1], es=v[2]) for k, v in trainer.GENRES.items()],
-        pool=pool, collections=[], collections_error=None, env=None,
+        pool=pool, collections=[], collections_error=None, env=None, coach=coach_on(),
     )
     if MODE == "local":
         env = environment()
@@ -315,6 +316,75 @@ def init_data(lang):
             except Exception as e:
                 data["collections_error"] = str(e)
     return data
+
+
+# ---------------------------------------------------------------- тренер ----
+
+def coach_on():
+    """Личная вкладка «Тренер»: только в программе на компьютере и только если включена в config.json."""
+    return MODE == "local" and coach.enabled()
+
+
+def coach_job(fn):
+    if any(j.kind == "coach" and j.state in ("queued", "running") for j in list(JOBS.values())):
+        raise RuntimeError("Подожди: тренер уже собирает коллекцию")
+
+    def target(job):
+        i18n.set_lang("ru")
+        return fn(job.log)
+    return new_job("coach", target)
+
+
+def coach_post(path, body):
+    if path == "/api/coach/refresh":
+        coach.refresh(force=True)
+        return {"ok": True}
+    if path in ("/api/coach/training", "/api/coach/ladder"):
+        key = str(body.get("ladder") or body.get("key") or "")
+        if key not in coach.LADDERS:
+            raise RuntimeError("Нет такой лестницы")
+        if path == "/api/coach/training":
+            return {"id": coach_job(lambda log: coach.build_training(key, log)).id}
+        if body.get("escape"):
+            coach.set_escape(key, str(body["escape"]))
+        else:
+            coach.set_active(key)
+        return {"ok": True}
+    if path == "/api/coach/training/finish":
+        coach.finish_training(str(body.get("id", "")))
+        return {"ok": True}
+    if path == "/api/coach/test":
+        return {"id": coach_job(coach.build_test).id}
+    if path == "/api/coach/test/finish":
+        coach.finish_test(str(body.get("id", "")))
+        return {"ok": True}
+    if path == "/api/coach/control/add":
+        text = str(body.get("text") or "")[:5000]
+        return {"id": coach_job(lambda log: coach.add_control(text, log)).id}
+    if path == "/api/coach/control/remove":
+        coach.remove_control(str(body.get("md5", "")))
+        return {"ok": True}
+    if path == "/api/coach/controlday":
+        return {"id": coach_job(coach.build_control_day).id}
+    if path == "/api/coach/apikeys":
+        coach.save_keys(body.get("client_id"), body.get("client_secret"), body.get("user"))
+        return {"ok": True}
+    if path == "/api/coach/pinned":
+        return {"id": coach_job(coach.import_pinned).id}
+    if path == "/api/coach/unbeaten":
+        return {"id": coach_job(coach.find_unbeaten).id}
+    raise RuntimeError("Неизвестная команда")
+
+
+def coach_watch():
+    """Тренер следит за базой игры: новая попытка разбирается через несколько секунд после карты."""
+    while True:
+        try:
+            if coach.enabled():
+                coach.refresh()
+        except Exception:
+            traceback.print_exc()
+        time.sleep(15)
 
 
 # ---------------------------------------------------------------- HTTP ----
@@ -401,6 +471,20 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return
         if url.path == "/api/init":
             return self._send(200, init_data(q.get("lang", config.load().get("language", "en"))))
+        if url.path == "/coach" or url.path.startswith("/api/coach/"):
+            if not coach_on():
+                return self._send(404, {"error": "coach is off"})
+            if url.path == "/coach":
+                with open(os.path.join(config.TOOL_DIR, "coach.html"), encoding="utf-8") as f:
+                    return self._send(200, f.read(), "text/html; charset=utf-8")
+            coach.refresh()
+            if url.path == "/api/coach/state":
+                return self._send(200, coach.state_view())
+            if url.path == "/api/coach/progress":
+                return self._send(200, coach.progress_view())
+            if url.path in ("/api/coach/play", "/api/coach/session"):
+                view = (coach.play_view if url.path.endswith("play") else coach.session_view)(q.get("id", ""))
+                return self._send(200 if view else 404, view or {"error": "not found"})
         if url.path == "/api/job":
             job = JOBS.get(q.get("id", ""))
             if not job:
@@ -469,6 +553,14 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
         if MODE != "local":
             return self._send(404, {"error": "not available on the website"})
+
+        if path.startswith("/api/coach/"):
+            if not coach_on():
+                return self._send(404, {"error": "coach is off"})
+            try:
+                return self._send(200, coach_post(path, body))
+            except RuntimeError as e:
+                return self._send(400, {"error": str(e)})
 
         if path == "/api/pools/refresh":
             return self._send(200, {"id": refresh_pools(body).id})
@@ -542,6 +634,8 @@ def main():
     threading.Thread(target=cleanup_loop, daemon=True).start()
     # база коллекций игроков грузится несколько секунд - заранее, чтобы первый подбор не ждал
     threading.Thread(target=collector.load, daemon=True).start()
+    if MODE == "local":
+        threading.Thread(target=coach_watch, daemon=True).start()
     url = "http://127.0.0.1:%d/" % PORT
     print("osu!drill %s [%s] -> %s  (Ctrl+C - выход)" % (config.VERSION, MODE, url), flush=True)
     if MODE == "local" and not args.no_browser and os.environ.get("OSU_TRAINER_NO_OPEN") != "1":

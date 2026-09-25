@@ -198,6 +198,7 @@
     <button class="iconbtn" id="btn-changes" onclick="openChanges()" data-i18n="changes"></button>
     <button class="iconbtn" onclick="openFeedback()" data-i18n="feedback"></button>
     <button class="iconbtn" id="btn-settings" onclick="openSettings()" data-i18n="settings" hidden></button>
+    <a class="iconbtn" id="btn-coach" href="/coach" hidden>Тренер</a>
   </div>
 </header>
 
@@ -1422,6 +1423,7 @@ async function load(){
   const wasSite = SITE; SITE = DATA.mode === 'server';
   document.querySelectorAll('.localonly').forEach(el => el.hidden = SITE);
   $('btn-settings').hidden = SITE;
+  $('btn-coach').hidden = !DATA.coach;          /* личная вкладка, включается в config.json */
   if (SITE){ $('banner').hidden = false; $('banner').className = 'banner info'; $('bannertext').textContent = t('banner_site');
              $('bannerbtn').hidden = true; $('bannerguide').hidden = false; }
   if (SITE !== wasSite) applyLang();
