@@ -16,8 +16,9 @@ import config
 FILES = [
     "README.md", "LICENSE", "package.json", "package-lock.json", ".gitignore",
     "setup.bat", "start.bat", "setup.sh", "start.sh", "install.ps1", "install.sh", "release.py",
-    "analyze.py", "collector.py", "config.py", "feedback.py", "i18n.py", "liquipedia.py", "net.py", "pools.py", "skills.py",
-    "trainer.py", "ui.py", "realm_tool.js", "index.html",
+    "analyze.py", "coach.py", "collector.py", "config.py", "feedback.py", "i18n.py", "liquipedia.py", "net.py",
+    "osu_api.py", "pools.py", "replay.py", "skills.py",
+    "trainer.py", "ui.py", "realm_tool.js", "index.html", "coach.html",
     "deploy/README.md", "deploy/deploy.sh", "deploy/nginx-osu.conf", "deploy/osu-trainer.service",
     "deploy/server-install.sh", "deploy/telegram-setup.sh",
 ]
