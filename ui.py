@@ -205,11 +205,14 @@ def fetch_remote_share(site, sid):
 def run_selection(params, ip=""):
     server = MODE == "server"
     a = trainer.coerce_params(params, server=server)
-    if not server and coach_on():
+    personal = not server and coach_on()
+    if personal:
         a.adjust = coach.personal_adjust        # поправки по твоим отметкам навыков в тренере
 
     def target(job):
         i18n.set_lang(a.lang)
+        if personal and not a.tournament and not a.popular:     # похожие на твои фарм-карты - только по просьбе
+            a.metric_filter = coach.farm_filter(str(params.get("farm") or ""))
         result = trainer.run(a, log=job.log)
         maps = [public_map(c) for c in result["picked"]]
         for m, c in zip(maps, result["picked"]):
@@ -374,7 +377,7 @@ def coach_post(path, body):
             coach.random_stop()
             return {"ok": True}
         skill = str(body.get("skill") or "") or None
-        if skill and skill not in ("any", "ladders") and skill not in coach.skills.SKILLS:
+        if skill and skill not in ("any", "ladders", "farm") and skill not in coach.skills.SKILLS:
             raise RuntimeError("Нет такого навыка")
         return {"id": coach_job(lambda log: coach.random_next(log, skill)).id}
     if path == "/api/coach/apikeys":
@@ -388,7 +391,7 @@ def coach_post(path, body):
         else:
             chosen = body.get("skills")
             coach.set_label(str(body.get("id", "")), [str(k) for k in chosen] if isinstance(chosen, list) else None,
-                            skip=bool(body.get("skip")))
+                            skip=bool(body.get("skip")), farm=body.get("farm") is True)
         return {"ok": True}
     if path == "/api/coach/pinned":
         return {"id": coach_job(coach.import_pinned).id}

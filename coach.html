@@ -98,6 +98,7 @@
   .chip:hover{border-color:var(--accent)}
   .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
   .chip.on small{color:var(--accent-ink);opacity:.7}
+  .chip.farm.on{background:var(--warn);border-color:var(--warn);color:#2a1d05}
   .jobpanel{position:fixed;right:16px;bottom:16px;width:min(560px,calc(100vw - 32px));background:#110d0f;border:1px solid var(--line2);
             border-radius:10px;z-index:60;box-shadow:0 10px 30px #000c}
   .jobhead{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
@@ -292,12 +293,16 @@ function randomCard(r){
   if (!r) return '';
   const opts = '<option value="any"' + (r.skill === 'any' ? ' selected' : '') + '>любой навык</option>' +
     '<option value="ladders"' + (r.skill === 'ladders' ? ' selected' : '') + '>навык моих лестниц</option>' +
+    '<option value="farm"' + (r.skill === 'farm' ? ' selected' : '') + (r.farm_ready ? '' : ' disabled') + '>фарм-карты' +
+      (r.farm_ready ? '' : ' (сначала отметь фарм)') + '</option>' +
     r.skills.map(s => '<option value="' + s.key + '"' + (r.skill === s.key ? ' selected' : '') + '>' + esc(s.title) + '</option>').join('');
   const c = r.current;
   let h = '<div class="card" style="grid-column:1/-1"><h2>Случайная карта' + (r.auto ? ' <span class="badge acc">идёт</span>' : '') + '</h2>';
   if (r.preparing) h += '<p class="warn">Готовлю следующую карту…</p>';
+  else if (r.error) h += '<div class="errbox">' + esc(r.error) + '. Режим остановлен — нажми «Дай карту», чтобы попробовать снова.</div>';
   if (c && !c.result){
     h += '<p><b>' + mapName(c) + '</b> · ' + num(c.sr, 2) + '★ · <span class="badge acc">' + esc(c.skill_title) + '</span> ' +
+      (c.farm ? '<span class="badge warn">фарм</span> ' : '') +
       '<a href="https://osu.ppy.sh/b/' + (+c.bid) + '" target="_blank" rel="noopener">↗</a></p>' +
       '<p>Код: ' + codeChip(c, true) + ' — нажми, чтобы скопировать, и вставь в поиск в выборе карты: lazer найдёт её по номеру. ' +
       'Если поиск пока пустой — lazer ещё импортирует карту, подожди пару секунд.</p>' +
@@ -314,7 +319,8 @@ function randomCard(r){
       (r.auto ? '' : '<p class="muted">Режим остановлен.</p>');
   } else {
     h += '<p>Дам одну новую карту случайного навыка около твоего уровня (~' + num(S.comfort, 2) + '★), которую ты не играл неделю. ' +
-      'Сыграл — сразу следующая, и так сколько хочешь.</p><p class="muted">Если на навык есть твоя лестница, карта будет с твоей ступени. ' +
+      'Сыграл — сразу следующая, и так сколько хочешь. Похожих на твои фарм-карты не будет — разве что выберешь «фарм-карты».</p>' +
+      '<p class="muted">Если на навык есть твоя лестница, карта будет с твоей ступени. ' +
       'Карты идут в зачёт лестниц, как в тренировке: порог взят на ' + S.need + ' из последних ' + S.of + ' карт ступени — ступень сдана. ' +
       'Моды учитываются: с DT, HR или HD карта считается такой, какой ты её сыграл.</p>';
   }
@@ -486,7 +492,7 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape') ($('askmodal
 
 /* ============================== «что это была за карта» ============================== */
 // после каждой новой карты: навыки, которые видит тренер, - поправь, если не так
-let ASK = null, ASKSEL = null, ASKCLOSED = null;
+let ASK = null, ASKSEL = null, ASKFARM = false, ASKCLOSED = null;
 function maybeAsk(){
   const v = S && S.ask;
   if (v && !$('askmodal').classList.contains('open') && ASKCLOSED !== v.id) showAsk(v);
@@ -494,12 +500,12 @@ function maybeAsk(){
 async function openAsk(id){
   try { showAsk(Object.assign(await api('/api/coach/label?id=' + encodeURIComponent(id)), {fromPlay:true})); } catch(e){ alert(e.message); }
 }
-function showAsk(v){ ASK = v; ASKSEL = new Set(v.chosen); renderAsk(); $('askmodal').classList.add('open'); }
+function showAsk(v){ ASK = v; ASKSEL = new Set(v.chosen); ASKFARM = !!v.farm; renderAsk(); $('askmodal').classList.add('open'); }
 function closeAsk(){ if (ASK) ASKCLOSED = ASK.id; $('askmodal').classList.remove('open'); }
 function toggleAsk(k){ ASKSEL.has(k) ? ASKSEL.delete(k) : ASKSEL.add(k); renderAsk(); }
 function renderAsk(){
   const v = ASK, name = k => (v.scores.find(x => x.key === k) || {title:k}).title;
-  const same = ASKSEL.size === v.auto.length && v.auto.every(k => ASKSEL.has(k));
+  const same = ASKSEL.size === v.auto.length && v.auto.every(k => ASKSEL.has(k)) && ASKFARM === !!v.farm_auto;
   $('askbox').innerHTML = '<div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1"><h2 style="margin:0 0 4px">Что это была за карта?</h2>' +
     '<div class="muted">' + mapName(v) + ' ' + mods(v.mods) + ' · ' + num(v.sr, 2) + '★ · ' + pct(v.acc, 2) + ' · ' + v.misses + ' пр.</div></div>' +
     '<button class="iconbtn" onclick="closeAsk()">Закрыть</button></div>' +
@@ -508,6 +514,9 @@ function renderAsk(){
     '<p class="muted">Если не так — отметь навыки, на которые карта на самом деле. Похожим картам отметка сдвинет оценки навыков: и в разборе, и в подборе.</p>' +
     '<div class="chips">' + v.scores.map(x => '<button class="chip' + (ASKSEL.has(x.key) ? ' on' : '') + '" title="' + esc(x.why + (x.like ? ' · поправлено по твоей отметке «' + x.like + '»' : '')) +
       '" onclick="toggleAsk(\'' + x.key + '\')">' + esc(x.title) + ' <small>' + x.score + '</small></button>').join('') + '</div>' +
+    '<div class="chips"><button class="chip farm' + (ASKFARM ? ' on' : '') + '" onclick="ASKFARM=!ASKFARM;renderAsk()">Фарм-карта</button>' +
+    '<span class="muted" style="align-self:center">' + (v.farm_auto && v.farm_like ? 'Похожа на твою фарм-карту «' + esc(v.farm_like) + '». ' : '') +
+    'Похожие на фарм-карты подбор даёт, только когда просишь фарм.</span></div>' +
     '<div class="actions"><button class="btn go" onclick="sendAsk(false)">' + (same ? 'Верно' : ASKSEL.size ? 'Сохранить' : 'Сохранить: смешанная') + '</button>' +
     (v.labeled ? '' : '<button class="btn" onclick="sendAsk(true)">Пропустить</button>') +
     (v.queue > 1 ? '<button class="btn" onclick="askPost({skip_all:true})">Пропустить все (' + v.queue + ')</button>' : '') + '</div>' +
@@ -522,7 +531,7 @@ async function askPost(body){
     await refresh(); render();
   } catch(e){ alert(e.message); }
 }
-function sendAsk(skip){ askPost(skip ? {id:ASK.id, skip:true} : {id:ASK.id, skills:[...ASKSEL]}); }
+function sendAsk(skip){ askPost(skip ? {id:ASK.id, skip:true} : {id:ASK.id, skills:[...ASKSEL], farm:ASKFARM}); }
 function playDetail(v){
   const r = v.row, a = v.analysis;
   let h = '<div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1"><h2 style="margin:0 0 4px">' + mapName(r) + ' ' + mods(r.mods) + '</h2>' +
@@ -653,8 +662,11 @@ function labelsCard(lb){
       h += '<div class="tablewrap"><table><tr><th>Навык</th><th class="num">Совпало</th><th class="num">Формула видит лишний</th><th class="num">Формула не видит</th></tr>' +
         lb.skills.map(p => '<tr><td>' + esc(p.title) + '</td><td class="num">' + p.both + '</td><td class="num ' + (p.extra ? 'bad' : '') + '">' + p.extra + '</td>' +
           '<td class="num ' + (p.missed ? 'bad' : '') + '">' + p.missed + '</td></tr>').join('') + '</table></div>';
+    if (lb.farm.length) h += '<p>Фарм-карт отмечено: <b>' + lb.farm.length + '</b> — похожие на них подбор даёт, только когда просишь фарм ' +
+      '(в случайной карте — «фарм-карты», в «Подборе карт» — «только фарм»).</p>';
     h += '<h3>Последние отметки</h3><ul class="plain">' + lb.recent.map(x => '<li><a href="#" onclick="openPlay(\'' + x.id + '\');return false">' + esc(x.artist) + ' — ' + esc(x.title) + '</a> ' +
-      (x.mods ? '<span class="badge mod">' + esc(x.mods) + '</span> ' : '') + '— ' + (x.skills.length ? x.skills.map(esc).join(', ') : 'смешанная') +
+      (x.mods ? '<span class="badge mod">' + esc(x.mods) + '</span> ' : '') + (x.farm ? '<span class="badge warn">фарм</span> ' : '') +
+      '— ' + (x.skills.length ? x.skills.map(esc).join(', ') : 'смешанная') +
       (same(x.skills, x.formula) ? '' : ' <span class="muted">(формулы: ' + (x.formula.length ? x.formula.map(esc).join(', ') : 'смешанная') + ')</span>') + '</li>').join('') + '</ul>';
   } else {
     h += '<p class="muted">Отметок пока нет. После каждой карты тренер спросит, на какие навыки она, — поправь, если он видит не так.</p>';

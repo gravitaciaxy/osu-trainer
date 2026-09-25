@@ -10,6 +10,7 @@
 
 Проваленные и брошенные попытки lazer не сохраняет - тренер видит только пройденные карты.
 """
+import collections
 import datetime
 import json
 import math
@@ -401,6 +402,7 @@ KNN_FEATURES = dict(skills.PROFILE_FEATURES, burst_ratio=(0.1, 1.5), burst_bpm=(
 KNN_SIGMA = 0.6         # похожесть exp(-(d/σ)²): у сыгранных карт ближайшая соседка в среднем на d≈0.65
 KNN_MARGIN = 15         # отмеченная карта должна оказаться по нужную сторону порога навыка с таким запасом
 KNN_SHRINK = 0.3        # одна далёкая отметка сдвигает мало
+FARM_SIGMA = 0.9        # фарм - «район» пошире: одна отметка задевает карты до d≈1 (у сыгранных - единицы из сотни)
 ASK_HOURS = 12          # спрашивать про попытки не старше
 
 _labels = dict(data=None, index=None)
@@ -450,7 +452,8 @@ def _labels_index():
                     sc[key] = cfg["score"](m)[0]
                 except (KeyError, TypeError, ValueError, ZeroDivisionError):
                     pass
-            idx.append(dict(m=m, skills=set(lab["skills"]), scores=sc, title=lab.get("title", "")))
+            idx.append(dict(m=m, skills=set(lab["skills"]), scores=sc, title=lab.get("title", ""),
+                            farm=bool(lab.get("farm"))))
         _labels["index"] = idx
     return idx
 
@@ -498,6 +501,40 @@ def personal(m, keys=None):
     return out
 
 
+def farm_score(m):
+    """Насколько карта похожа на отмеченные тобой фарм-карты: (доля фарма среди похожих отметок 0..1,
+    самая похожая фарм-карта). Похожие отметки «не фарм» долю разбавляют."""
+    num = den = 0.0
+    best = None
+    for it in _labels_index() if m else ():
+        w = math.exp(-(_distance(m, it["m"]) / FARM_SIGMA) ** 2)
+        if w < 0.05:
+            continue
+        den += w
+        if it["farm"]:
+            num += w
+            if best is None or w > best[0]:
+                best = (w, it["title"])
+    return (num / (den + KNN_SHRINK), best[1]) if best else (0.0, None)
+
+
+def is_farm(m):
+    return farm_score(m)[0] >= 0.5
+
+
+def has_farm():
+    return any(lab.get("farm") for lab in load_labels()["labels"].values())
+
+
+def farm_filter(mode):
+    """Фильтр метрик для подбора: похожие на твои фарм-карты - только по просьбе (mode "only")."""
+    if mode == "only":
+        if not has_farm():
+            raise RuntimeError("Сначала отметь в тренере хотя бы одну фарм-карту — в окошке после карты")
+        return is_farm
+    return (lambda m: not is_farm(m)) if has_farm() else None
+
+
 def personal_adjust(cfg, m, s, why):
     """Хук подбора (a.adjust в trainer.make_scorer): оценка навыка с поправкой по твоим отметкам."""
     key = next((k for k, v in skills.SKILLS.items() if v is cfg), None)
@@ -533,9 +570,11 @@ def label_view(s, queue=0):
     ss = skillset(s)
     lab = label_for(s)
     auto = [x["key"] for x in ss["scores"] if x["main"]][:3]
+    fs, like = farm_score(play_metrics(s))
     return dict(id=s["id"], title=s["title"], artist=s["artist"], diff=s["diff"], sr=s["sr"], bid=s["bid"],
                 mods=s["mods_list"], mods_name=ss["mods"], acc=round(s["acc"], 4), misses=s["misses"], ts=s["ts"],
                 auto=auto, chosen=lab["skills"] if lab else auto, labeled=bool(lab), queue=queue,
+                farm_auto=fs >= 0.5, farm=bool(lab.get("farm")) if lab else fs >= 0.5, farm_like=like,
                 scores=[dict(key=x["key"], title=x["title"], score=x["score"], why=x["why"], like=x["like"])
                         for x in ss["scores"]])
 
@@ -552,8 +591,9 @@ def play_label(pid):
     return label_view(s)
 
 
-def set_label(pid, chosen=None, skip=False):
-    """Отметка навыков попытки (для этой карты с этими модами) или «пропустить»."""
+def set_label(pid, chosen=None, skip=False, farm=False):
+    """Отметка навыков попытки (для этой карты с этими модами) или «пропустить». farm - это фарм-карта:
+    похожие подбор даёт только по просьбе."""
     with _lock:
         s = next((x for x in scores() if x["id"] == pid), None)
         if not s:
@@ -572,7 +612,8 @@ def set_label(pid, chosen=None, skip=False):
                 skills=[k for k in skills.SKILLS if k in set(chosen or [])],
                 auto=[x["key"] for x in ss["scores"] if x["main"]][:3],          # что предложил тренер
                 formula=[x["key"] for x in ss["scores"] if x["formula"]][:3],    # что видят одни формулы
-                id=pid, ts=time.time(), title=s["title"], artist=s["artist"], diff=s["diff"], bid=s["bid"],
+                farm=bool(farm), id=pid, ts=time.time(), title=s["title"], artist=s["artist"], diff=s["diff"], bid=s["bid"],
+                sid=s["sid"],
                 mods=ss["mods"], metrics=play_metrics(s))
         save_labels(d)
         if not skip:
@@ -632,7 +673,9 @@ def labels_view():
             p["both" if k in user and k in formula else "extra" if k in formula else "missed"] += 1
     return dict(n=len(labs), ask=d["ask"], agree=sum(1 for x in labs if set(x["skills"]) == set(x.get("formula", []))),
                 skills=sorted(per.values(), key=lambda p: (-(p["extra"] + p["missed"]), p["title"])),
+                farm=[dict(title=x["title"], artist=x["artist"], diff=x["diff"], id=x["id"]) for x in labs if x.get("farm")],
                 recent=[dict(title=x["title"], artist=x["artist"], diff=x["diff"], mods=x.get("mods", ""), id=x["id"],
+                             farm=bool(x.get("farm")),
                              skills=[skills.SKILLS[k]["title"] for k in x["skills"]],
                              formula=[skills.SKILLS[k]["title"] for k in x.get("formula", [])]) for x in labs[:12]])
 
@@ -1097,7 +1140,7 @@ def pick_maps(lad, step, stars, exclude, count, log):
     params = dict(skill=lad["skill"], stars="%.2f-%.2f" % stars, count=count * 4, pool=300, depth=250,
                   crowd_weight=0.5, per_set=1, status="ranked,loved", lang="ru", min_score=25, dry_run=True)
     a = trainer.coerce_params(params)
-    a.metric_filter = lambda m: meets(lad, m) and in_step(lad, step, param_value(lad, m))
+    a.metric_filter = lambda m: meets(lad, m) and in_step(lad, step, param_value(lad, m)) and not is_farm(m)
     a.exclude_md5 = set(exclude)
     a.adjust = personal_adjust
     trainer.prepare(a)
@@ -1266,10 +1309,71 @@ def on_step(target, m):
     return meets(lad, m) and in_step(lad, step, param_value(lad, m))
 
 
+def farm_skills():
+    """Навыки твоих фарм-карт в случайном порядке: чем чаще навык среди них, тем вероятнее он первый."""
+    cnt = collections.Counter(k for lab in load_labels()["labels"].values() if lab.get("farm") for k in lab["skills"])
+    return sorted(cnt, key=lambda k: -cnt[k] * random.random()) or random.sample(list(skills.SKILLS), len(skills.SKILLS))
+
+
+def farm_pick(exclude, log):
+    """Случайная новая фарм-карта около твоего уровня: сначала соседи твоих фарм-карт по подборкам игроков
+    (кто держит их в коллекциях, держит там и похожие), потом карты тех же навыков; берётся первая, похожая
+    на отмеченные фарм-карты."""
+    labs = [lab for lab in load_labels()["labels"].values() if lab.get("farm")]
+    if not labs:
+        raise RuntimeError("Сначала отметь хотя бы одну фарм-карту — в окошке после карты")
+    c = comfort_stars()
+    stars = (max(1.0, round(c - 0.5, 2)), round(c + 0.5, 2))
+    index = collector.load()
+    refs = {lab["bid"] for lab in labs if lab.get("bid")}
+    sets = {lab["sid"] for lab in labs if lab.get("sid")}
+    co = index.cooc(sets) if index else None
+    if co is not None and not co["hits"]:
+        co = None
+    for key in farm_skills()[:3]:
+        cfg = skills.SKILLS[key]
+        log("Фарм, как твои отметки: %s, звёзды %.1f–%.1f (твой уровень ~%.1f★)" % (cfg["title"], stars[0], stars[1], c))
+        a = trainer.coerce_params(dict(skill=key, stars="%.2f-%.2f" % stars, pool=80, depth=100, crowd_weight=0.5,
+                                       status="ranked,loved", lang="ru"))
+        trainer.prepare(a)
+        try:
+            cands = trainer.gather_crowd(index, [key], co, refs, a, stars, set(), log) if index else []
+        except (OSError, RuntimeError):
+            cands = []
+        # другие сложности уже отмеченных песен - не новость, нужны другие песни
+        cands = [x for x in cands if x.get("md5") and x["md5"] not in exclude and x["sid"] not in sets]
+        near = [x for x in cands if co and index.cooc_info(co, x["bid"], x["sid"])[0] > 0]
+        rest = [x for x in cands if not (co and index.cooc_info(co, x["bid"], x["sid"])[0] > 0)]
+        random.shuffle(near)
+        random.shuffle(rest)
+        if near:
+            log("  соседей твоих фарм-карт по подборкам игроков: %d" % len(near))
+        scorer = trainer.make_scorer([cfg], None, a)
+        best = None
+        for cand in (near + rest)[:30]:
+            res = trainer.score_candidate(cand, scorer, a)
+            if not res:
+                continue
+            fs, like = farm_score(res["metrics"])
+            if fs >= 0.5:
+                log("  похожа на твою фарм-карту «%s»" % like)
+                return key, res, False
+            if fs >= 0.25 and (best is None or fs > best[0]):
+                best = (fs, res, like)
+        if best:        # просишь фарм - лучше самая похожая из проверенных, чем ничего
+            log("  ближе всех к твоим фарм-картам — %s (похожа на «%s»)" % (best[1]["title"], best[2]))
+            return key, best[1], False
+        log("  похожих на твои фарм-карты нет — пробую другой навык")
+    raise RuntimeError("Похожих на твои фарм-карты не нашлось — отметь ещё пару фарм-карт или попробуй позже")
+
+
 def random_pick(skill, exclude, log, steps=None):
     """Случайная новая карта навыка (или случайного навыка) около твоего уровня: кандидаты из подборок
     игроков и поиска, проверяются разбором по одному, пока не найдётся карта с явным навыком. Если на навык
-    есть твоя лестница, лучше карта её ступени - тогда она пойдёт в зачёт. -> (навык, карта, на ступени ли)."""
+    есть твоя лестница, лучше карта её ступени - тогда она пойдёт в зачёт. Похожие на твои фарм-карты -
+    только в режиме «farm», и тогда только они. -> (навык, карта, на ступени ли)."""
+    if skill == "farm":
+        return farm_pick(exclude, log)
     steps = steps or {}
     c = comfort_stars()
     stars = (max(1.0, round(c - 0.5, 2)), round(c + 0.5, 2))
@@ -1306,6 +1410,10 @@ def random_pick(skill, exclude, log, steps=None):
             extra += 1 if fallback else 0
             res = trainer.score_candidate(cand, scorer, a)
             if not res or res["score"] < cfg["min_score"]:
+                continue
+            fs, like = farm_score(res["metrics"])
+            if fs >= 0.5:
+                log("  %s — похожа на твою фарм-карту «%s», пропускаю" % (res["title"], like))
                 continue
             if not target or on_step(target, res["metrics"]):
                 return key, res, bool(target)
@@ -1348,34 +1456,44 @@ def random_next(log, skill=None):
         steps = {k: (LADDERS[k], ld["step"]) for k, ld in st["ladders"].items()
                  if k in skills.SKILLS and LADDERS.get(k, {}).get("skill") == k}
         save_state(st)
-    pick = None
+    pick, error = None, "Карту подобрать не удалось"
     try:
         for _attempt in range(3):
-            key, m, stepped = random_pick(skill, exclude, log, steps)
+            try:
+                key, m, stepped = random_pick(skill, exclude, log, steps)
+            except RuntimeError as e:
+                error = str(e)
+                raise
             pick = dict(bid=m["bid"], sid=m["sid"], md5=m["md5"], sr=m["sr"], title=m["title"], artist=m["artist"],
                         diff=m["diff"], skill=key, skill_title=skills.SKILLS[key]["title"], score=m["score"],
                         why=m.get("why", ""), bpm=m["metrics"]["bpm"], length=m["metrics"]["length"], given=time.time())
             if stepped:
                 pick.update(ladder=key, ladder_title=LADDERS[key]["title"], ladder_step=steps[key][1],
                             ladder_label=step_label(*steps[key]))
+            if skill == "farm":
+                pick["farm"] = True
             if _deliver(pick, log):
                 break
             log("  не скачалась — ищу другую")
             exclude.add(pick["md5"])
             pick = None
         if not pick:
-            raise RuntimeError("Карты не скачиваются — зеркало не отвечает, попробуй позже")
+            error = "Карты не скачиваются — зеркало не отвечает, попробуй позже"
+            raise RuntimeError(error)
     finally:
         with _lock:
             st = load_state()
             r = random_state(st)
             r.pop("preparing", None)
+            r.pop("error", None)
             if pick:
                 cur = r["current"]
                 if cur and not cur.get("result"):       # предыдущую не сыграл - в историю как пропущенную
                     r["history"].append(dict(cur, skipped=True))
                 r["current"] = pick
                 r["history"] = r["history"][-60:]
+            else:           # не вышло - режим встаёт, иначе фон пробовал бы снова каждые 15 секунд
+                r["auto"], r["error"] = False, error
             save_state(st)
     log("Готово: %s — %s [%s], %.2f★ · %s." % (pick["artist"], pick["title"], pick["diff"], pick["sr"], pick["skill_title"]))
     if pick.get("ladder"):
@@ -1463,7 +1581,8 @@ def random_pending():
 def random_view(st):
     r = random_state(st)
     busy = bool(r.get("preparing") and time.time() - r["preparing"] < PREPARE_TIMEOUT)
-    return dict(current=r["current"], auto=r["auto"], skill=r["skill"], preparing=busy,
+    return dict(current=r["current"], auto=r["auto"], skill=r["skill"], preparing=busy, error=r.get("error"),
+                farm_ready=has_farm(),
                 history=[h for h in r["history"] if h.get("result")][-8:][::-1],
                 played=sum(1 for h in r["history"] if h.get("result")), collection=RANDOM_COLLECTION,
                 skills=[dict(key=k, title=v["title"]) for k, v in skills.SKILLS.items()])
