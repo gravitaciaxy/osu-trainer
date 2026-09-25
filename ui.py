@@ -31,6 +31,7 @@ import collector  # noqa: E402
 import config  # noqa: E402
 import feedback  # noqa: E402
 import i18n  # noqa: E402
+import labels  # noqa: E402
 import net  # noqa: E402
 import pools  # noqa: E402
 import skills  # noqa: E402
@@ -202,17 +203,27 @@ def fetch_remote_share(site, sid):
 
 # ------------------------------------------------------------- задачи -----
 
+def label_model():
+    """Отметки навыков автора для подбора: у самого автора - из тренера, на сайте - присланные им,
+    в программе без тренера - скачанные с сайта."""
+    if MODE != "server" and coach_on():
+        return coach.label_model()
+    if MODE != "server":
+        labels.refresh_global()             # раз в 12 часов, в фоне
+    return labels.global_model()
+
+
 def run_selection(params, ip=""):
     server = MODE == "server"
     a = trainer.coerce_params(params, server=server)
-    personal = not server and coach_on()
-    if personal:
-        a.adjust = coach.personal_adjust        # поправки по твоим отметкам навыков в тренере
+    model = label_model()
+    if len(model):
+        a.adjust = model.adjust             # пороги навыков и оценки похожих карт по отметкам автора
 
     def target(job):
         i18n.set_lang(a.lang)
-        if personal and not a.tournament and not a.popular:     # похожие на твои фарм-карты - только по просьбе
-            a.metric_filter = coach.farm_filter(str(params.get("farm") or ""))
+        if not a.tournament and not a.popular:      # похожие на фарм-карты - только по просьбе
+            a.metric_filter = model.farm_filter(str(params.get("farm") or ""))
         result = trainer.run(a, log=job.log)
         maps = [public_map(c) for c in result["picked"]]
         for m, c in zip(maps, result["picked"]):
@@ -310,7 +321,7 @@ def init_data(lang):
                      desc_es=v["desc_es"])
                 for k, v in skills.SKILLS.items()],
         genres=[dict(id=k, ru=v[0], en=v[1], es=v[2]) for k, v in trainer.GENRES.items()],
-        pool=pool, collections=[], collections_error=None, env=None, coach=coach_on(),
+        pool=pool, collections=[], collections_error=None, env=None, coach=coach_on(), farm=label_model().farm,
     )
     if MODE == "local":
         env = environment()
@@ -403,6 +414,8 @@ def coach_post(path, body):
 def coach_watch():
     """Тренер следит за базой игры: новая попытка разбирается через несколько секунд после карты,
     а в режиме «случайная карта» сразу готовится следующая."""
+    if coach.enabled():
+        coach.sync_labels(delay=10)         # отметки, не дошедшие до сайта в прошлый раз
     while True:
         try:
             if coach.enabled():
@@ -490,6 +503,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if url.path in ("/", "/index.html"):
             with open(os.path.join(config.TOOL_DIR, "index.html"), encoding="utf-8") as f:
                 return self._send(200, f.read(), "text/html; charset=utf-8")
+        if url.path == "/api/labels" and MODE == "server":
+            # отметки автора - открыто: по ним подбирают и программы без тренера
+            return self._send(200, {"digest": labels.digest()} if q.get("digest") else labels.public_list())
         if url.path.startswith("/s/"):
             sid = url.path[3:]
             if ID_RE.match(sid):
@@ -571,6 +587,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if job:
                 job.cancel = True
             return self._send(200, {"ok": True})
+        if path == "/api/labels" and MODE == "server":
+            # отметки присылает только тренер автора - с ключом, который сайт создал сам (cache/labels/token)
+            auth = self.headers.get("Authorization") or ""
+            if not secrets.compare_digest(auth.encode("utf-8"), ("Bearer " + labels.server_token()).encode("utf-8")):
+                return self._send(403, {"error": "forbidden"})
+            try:
+                return self._send(200, {"ok": True, "n": labels.apply_upload(body)})
+            except ValueError as e:
+                return self._send(400, {"error": str(e)})
         if path == "/api/feedback":
             if body.get("website"):              # скрытое поле-ловушка: его заполняют только боты
                 return self._send(200, {"ok": True})

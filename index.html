@@ -226,8 +226,8 @@
       <section id="pane-skill">
         <div class="lbl"><span data-i18n="skills"></span><span class="help" tabindex="0" data-tip-key="tip_skills">?</span></div>
         <div class="chips" id="skills"></div>
-        <!-- тренер (личное, только в программе): фарм-карты по отметкам игрока -->
-        <div class="flags coachonly" hidden>
+        <!-- фарм-карты по отметкам автора: похожие на них - только по просьбе -->
+        <div class="flags" id="farmbox" hidden>
           <label class="flag"><input type="checkbox" id="farm_only"><span data-i18n="farm_only"></span><span class="help" tabindex="0" data-tip-key="tip_farm">?</span></label>
         </div>
 
@@ -543,7 +543,7 @@ ru: {
   tip_min_score:'Минимальная оценка соответствия навыку, от 0 до 100. Пусто — значение по умолчанию для навыка.',
   tip_threads:'Сколько карт проверять параллельно. Больше 4 не нужно — зеркала ограничивают частоту запросов.',
   tip_local_only:'Ничего не скачивать: собрать коллекцию только из уже установленных карт.',
-  tip_farm:'Фарм-карты отмечаешь в тренере — в окошке после карты. Без этой галочки похожие на них карты в подборку не попадают, с ней — только они.',
+  tip_farm:'Фарм-карты (которые дают много pp за простые паттерны) отмечает автор osu!drill. Без этой галочки похожие на них карты в подборку не попадают, с ней — только они.',
   tip_skip_owned:'Исключить карты, которые уже есть в игре.',
   tip_slots:'Слот — это мод и номер карты в пуле раунда: NM2 — вторая карта без модов, HD1 — первая с Hidden, TB — tiebreaker. Номер примерно отражает сложность внутри мода. Клик по названию мода слева выбирает весь ряд. Число на кнопке — сколько таких карт в базе.',
   tip_digits:'Ограничение по рангу игроков турнира: 5-digit — ранги с 10 000 по 99 999, 6-digit — от 100 000, open — без ограничений. «Не указан» — ограничение на странице турнира не нашлось (обычно это open). Ничего не выбрано — все турниры.',
@@ -672,7 +672,7 @@ en: {
   tip_min_score:'Minimum skill match score, 0–100. Empty — the default for the skill.',
   tip_threads:'How many maps to check in parallel. No need for more than 4 — mirrors rate-limit requests.',
   tip_local_only:'Download nothing: build the collection from maps you already have installed.',
-  tip_farm:'You mark farm maps in the coach, in the window after each play. Without this box, maps similar to them are left out; with it, you get only them.',
+  tip_farm:'Farm maps (lots of pp for simple patterns) are marked by the osu!drill author. Without this box, maps similar to them are left out; with it, you get only them.',
   tip_skip_owned:'Exclude maps that are already installed.',
   tip_slots:'A slot is the mod plus the position of the map in a round pool: NM2 is the second No Mod map, HD1 the first Hidden, TB the tiebreaker. The number roughly reflects difficulty within the mod. Click a mod name on the left to select the whole row. The number on a button is how many such maps are in the database.',
   tip_digits:'Player rank restriction of the tournament: 5-digit = ranks 10,000–99,999, 6-digit = 100,000 and below, open = no restriction. "Unspecified" — no restriction found on the tournament page (usually open). Nothing selected — all tournaments.',
@@ -801,7 +801,7 @@ es: {
   tip_min_score:'Puntuación mínima de coincidencia con la habilidad, de 0 a 100. Vacío: el valor por defecto de la habilidad.',
   tip_threads:'Cuántos mapas se revisan en paralelo. No hace falta más de 4: los mirrors limitan las peticiones.',
   tip_local_only:'No descargar nada: crear la colección solo con mapas ya instalados.',
-  tip_farm:'Los mapas de farm se marcan en el entrenador, en la ventana tras cada partida. Sin esta casilla, los mapas parecidos quedan fuera; con ella, solo salen esos.',
+  tip_farm:'Los mapas de farm (mucho pp con patrones simples) los marca el autor de osu!drill. Sin esta casilla, los mapas parecidos quedan fuera; con ella, solo salen esos.',
   tip_skip_owned:'Excluir los mapas que ya tienes en el juego.',
   tip_slots:'Un slot es el mod más la posición del mapa en el pool de una ronda: NM2 es el segundo mapa No Mod, HD1 el primero con Hidden, TB el tiebreaker. El número refleja más o menos la dificultad dentro del mod. Pulsa el nombre del mod a la izquierda para elegir toda la fila. El número del botón indica cuántos mapas así hay en la base.',
   tip_digits:'Restricción de rango de los jugadores del torneo: 5-digit = rangos del 10 000 al 99 999, 6-digit = desde 100 000, open = sin restricción. «Sin especificar»: la página del torneo no indica restricción (normalmente es open). Sin selección: todos los torneos.',
@@ -1431,7 +1431,7 @@ async function load(){
   document.querySelectorAll('.localonly').forEach(el => el.hidden = SITE);
   $('btn-settings').hidden = SITE;
   $('btn-coach').hidden = !DATA.coach;          /* личная вкладка, включается в config.json */
-  document.querySelectorAll('.coachonly').forEach(el => el.hidden = !DATA.coach);
+  $('farmbox').hidden = !DATA.farm;              /* есть фарм-отметки автора */
   if (SITE){ $('banner').hidden = false; $('banner').className = 'banner info'; $('bannertext').textContent = t('banner_site');
              $('bannerbtn').hidden = true; $('bannerguide').hidden = false; }
   if (SITE !== wasSite) applyLang();

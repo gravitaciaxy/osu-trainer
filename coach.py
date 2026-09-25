@@ -24,6 +24,7 @@ import time
 import analyze
 import collector
 import config
+import labels
 import net
 import osu_api
 import pools
@@ -392,20 +393,16 @@ def row(s, a=None):
 
 
 # ------------------------------------------------------ отметки навыков ----
-# После карты тренер спрашивает, на какие навыки она на самом деле. Отметка заменяет скиллсет этой
-# карты (с этими модами), а похожим картам сдвигает оценки навыков: так учатся и подсказки тренера,
-# и подбор - случайные карты, тренировки и «Подбор карт» в программе. Сайта это не касается.
+# После карты тренер спрашивает, на какие навыки она на самом деле и не фарм ли это. Отметка заменяет
+# скиллсет этой карты (с этими модами), а по всем отметкам (labels.Model) подбор сдвигает пороги навыков
+# и оценки похожих карт и держит фарм только по просьбе. Так учатся подсказки тренера, случайные карты,
+# тренировки и «Подбор карт» в программе, а обезличенная копия отметок уходит на сайт - и там подбор
+# меняется так же, для всех.
 
-# признаки похожести карт: как у «похоже на эти карты» плюс bursts/alt, длина и OD
-KNN_FEATURES = dict(skills.PROFILE_FEATURES, burst_ratio=(0.1, 1.5), burst_bpm=(25.0, 0.8), alt_ratio=(0.05, 1.5),
-                    length=(60.0, 0.6), od=(0.5, 0.4))
-KNN_SIGMA = 0.6         # похожесть exp(-(d/σ)²): у сыгранных карт ближайшая соседка в среднем на d≈0.65
-KNN_MARGIN = 15         # отмеченная карта должна оказаться по нужную сторону порога навыка с таким запасом
-KNN_SHRINK = 0.3        # одна далёкая отметка сдвигает мало
-FARM_SIGMA = 0.9        # фарм - «район» пошире: одна отметка задевает карты до d≈1 (у сыгранных - единицы из сотни)
 ASK_HOURS = 12          # спрашивать про попытки не старше
 
-_labels = dict(data=None, index=None)
+_labels = dict(data=None, model=None)
+_sync = dict(timer=None, status=None, lock=threading.Lock())
 
 
 def load_labels():
@@ -422,12 +419,14 @@ def load_labels():
     return _labels["data"]
 
 
-def save_labels(d):
+def save_labels(d, sync=False):
     now = time.time()
     d["asked"] = {k: v for k, v in d["asked"].items() if now - v < 60 * DAY}
     _save(LABELS_JSON, d)
-    _labels.update(data=d, index=None)
+    _labels.update(data=d, model=None)
     _skillsets.clear()
+    if sync:
+        sync_labels()
 
 
 def label_key(s):
@@ -438,110 +437,67 @@ def label_for(s):
     return load_labels()["labels"].get(label_key(s))
 
 
-def _labels_index():
-    idx = _labels["index"]
-    if idx is None:
-        idx = []
-        for lab in load_labels()["labels"].values():
-            m = lab.get("metrics")
-            if not m:
-                continue
-            sc = {}
-            for key, cfg in skills.SKILLS.items():
-                try:
-                    sc[key] = cfg["score"](m)[0]
-                except (KeyError, TypeError, ValueError, ZeroDivisionError):
-                    pass
-            idx.append(dict(m=m, skills=set(lab["skills"]), scores=sc, title=lab.get("title", ""),
-                            farm=bool(lab.get("farm"))))
-        _labels["index"] = idx
-    return idx
-
-
-def _distance(a, b):
-    num = den = 0.0
-    for k, (spread, w) in KNN_FEATURES.items():
-        d = (a.get(k, 0) - b.get(k, 0)) / spread
-        num += w * d * d
-        den += w
-    return math.sqrt(num / den)
+def label_model():
+    """Поправки подбора по твоим отметкам (пересобираются после каждой новой отметки)."""
+    model = _labels["model"]
+    if model is None:
+        model = _labels["model"] = labels.Model(load_labels()["labels"].values())
+    return model
 
 
 def personal(m, keys=None):
-    """Поправки к оценкам навыков по твоим отметкам похожих карт: {навык: (сдвиг, похожая поправленная карта)}.
-    Где формула ошиблась на похожей отмеченной карте - насколько её надо сдвинуть, чтобы она увидела карту
-    так же, как ты (с запасом). Сдвиги усредняются с весом похожести; отметки, где формула права, их разбавляют."""
-    idx = _labels_index()
-    if not idx or not m:
-        return {}
-    near = []
-    for it in idx:
-        w = math.exp(-(_distance(m, it["m"]) / KNN_SIGMA) ** 2)
-        if w >= 0.05:
-            near.append((w, it))
-    out = {}
-    for key in keys or skills.SKILLS:
-        mn = skills.SKILLS[key]["min_score"]
-        num = den = 0.0
-        best = None
-        for w, it in near:
-            if key == "reading" and bool(m.get("hidden")) != bool(it["m"].get("hidden")):
-                continue                # отметка чтения с HD о карте без HD ничего не говорит (и наоборот)
-            s = it["scores"].get(key, 0.0)
-            if (key in it["skills"]) == (s >= mn):
-                target = s              # формула видит эту карту так же, как ты
-            else:
-                target = mn + KNN_MARGIN if key in it["skills"] else mn - KNN_MARGIN
-            num += w * (target - s)
-            den += w
-            if target != s and (best is None or w > best[0]):
-                best = (w, it["title"])
-        if best and abs(num) / (den + KNN_SHRINK) >= 1:
-            out[key] = (num / (den + KNN_SHRINK), best[1])
-    return out
+    """Сдвиги оценок навыков по твоим отметкам: {навык: (сдвиг, похожая отмеченная карта или None)}."""
+    return label_model().deltas(m, keys)
 
 
 def farm_score(m):
-    """Насколько карта похожа на отмеченные тобой фарм-карты: (доля фарма среди похожих отметок 0..1,
-    самая похожая фарм-карта). Похожие отметки «не фарм» долю разбавляют."""
-    num = den = 0.0
-    best = None
-    for it in _labels_index() if m else ():
-        w = math.exp(-(_distance(m, it["m"]) / FARM_SIGMA) ** 2)
-        if w < 0.05:
-            continue
-        den += w
-        if it["farm"]:
-            num += w
-            if best is None or w > best[0]:
-                best = (w, it["title"])
-    return (num / (den + KNN_SHRINK), best[1]) if best else (0.0, None)
+    return label_model().farm_score(m)
 
 
 def is_farm(m):
-    return farm_score(m)[0] >= 0.5
+    return label_model().is_farm(m)
 
 
 def has_farm():
-    return any(lab.get("farm") for lab in load_labels()["labels"].values())
+    return label_model().farm
 
 
 def farm_filter(mode):
-    """Фильтр метрик для подбора: похожие на твои фарм-карты - только по просьбе (mode "only")."""
-    if mode == "only":
-        if not has_farm():
-            raise RuntimeError("Сначала отметь в тренере хотя бы одну фарм-карту — в окошке после карты")
-        return is_farm
-    return (lambda m: not is_farm(m)) if has_farm() else None
+    return label_model().farm_filter(mode)
 
 
 def personal_adjust(cfg, m, s, why):
     """Хук подбора (a.adjust в trainer.make_scorer): оценка навыка с поправкой по твоим отметкам."""
-    key = next((k for k, v in skills.SKILLS.items() if v is cfg), None)
-    d = personal(m, [key]).get(key) if key else None
-    if not d:
-        return s, why
-    return max(0.0, min(100.0, s + d[0])), "%s · по твоим отметкам %+.0f (похожа на «%s»)" % (why, d[0], d[1])
+    return label_model().adjust(cfg, m, s, why)
+
+
+def public_labels():
+    """Отметки для сайта: labels.clean оставит только нужное подбору - без попыток, точности и времени."""
+    return [dict(lab, k=labels.entry_key(key)) for key, lab in load_labels()["labels"].items()]
+
+
+def sync_labels(delay=5.0):
+    """Отметки -> сайт: в фоне, через несколько секунд после последней правки. Ключ - labels_token в
+    config.json (его выдаёт сайт)."""
+    token = str(config.load().get("labels_token") or "")
+    if not token:
+        _sync["status"] = dict(ok=False, error="нет ключа для сайта (labels_token в config.json)")
+        return
+    with _sync["lock"]:
+        if _sync["timer"]:
+            _sync["timer"].cancel()
+        t = threading.Timer(delay, _sync_now, args=(token,))
+        t.daemon = True
+        _sync["timer"] = t
+        t.start()
+
+
+def _sync_now(token):
+    try:
+        n, up, gone = labels.upload(public_labels(), token)
+        _sync["status"] = dict(ok=True, n=n, up=up, gone=gone, ts=time.time())
+    except (OSError, RuntimeError, ValueError) as e:
+        _sync["status"] = dict(ok=False, error=str(e), ts=time.time())
 
 
 def ask_queue(sc=None, every=False):
@@ -615,7 +571,7 @@ def set_label(pid, chosen=None, skip=False, farm=False):
                 farm=bool(farm), id=pid, ts=time.time(), title=s["title"], artist=s["artist"], diff=s["diff"], bid=s["bid"],
                 sid=s["sid"],
                 mods=ss["mods"], metrics=play_metrics(s))
-        save_labels(d)
+        save_labels(d, sync=not skip)
         if not skip:
             recredit(s)
 
@@ -677,7 +633,10 @@ def labels_view():
                 recent=[dict(title=x["title"], artist=x["artist"], diff=x["diff"], mods=x.get("mods", ""), id=x["id"],
                              farm=bool(x.get("farm")),
                              skills=[skills.SKILLS[k]["title"] for k in x["skills"]],
-                             formula=[skills.SKILLS[k]["title"] for k in x.get("formula", [])]) for x in labs[:12]])
+                             formula=[skills.SKILLS[k]["title"] for k in x.get("formula", [])]) for x in labs[:12]],
+                # пороги навыков, сдвинутые по отметкам (для всех карт), и отправка на сайт
+                calibration=[dict(key=k, title=skills.SKILLS[k]["title"], **v) for k, v in label_model().calibration.items()],
+                sync=_sync["status"], token=bool(config.load().get("labels_token")))
 
 
 def aggregate(analyses):

@@ -657,7 +657,10 @@ function labelsCard(lb){
   let h = '<div class="card"><h2>Отметки навыков</h2>';
   if (lb.n){
     h += '<p>Отмечено карт: <b>' + lb.n + '</b>, формулы подбора увидели их так же на ' + lb.agree + ' (' + pct(lb.agree / lb.n, 0) + '). ' +
-      'Похожим картам отметки сдвигают оценки навыков — в подсказках тренера, случайных картах, тренировках и «Подборе карт» в программе.</p>';
+      'По отметкам подбор меняется везде — в подсказках тренера, случайных картах, тренировках, «Подборе карт» и на сайте, для всех: ' +
+      'похожим картам сдвигаются оценки навыков, а где формула систематически видит навык не там, где ты, сдвигается её порог.</p>';
+    if (lb.calibration.length) h += '<h3>Пороги навыков по отметкам</h3><ul class="plain">' + lb.calibration.map(c => '<li><b>' + esc(c.title) + '</b>: ' +
+      (c.shift > 0 ? '+' : '') + num(c.shift, 1) + ' к оценке для всех карт <span class="muted">(по ' + c.n + ' отметкам около порога, совпадение ' + pct(c.agree, 0) + ')</span></li>').join('') + '</ul>';
     if (lb.skills.some(p => p.extra + p.missed))
       h += '<div class="tablewrap"><table><tr><th>Навык</th><th class="num">Совпало</th><th class="num">Формула видит лишний</th><th class="num">Формула не видит</th></tr>' +
         lb.skills.map(p => '<tr><td>' + esc(p.title) + '</td><td class="num">' + p.both + '</td><td class="num ' + (p.extra ? 'bad' : '') + '">' + p.extra + '</td>' +
@@ -671,6 +674,11 @@ function labelsCard(lb){
   } else {
     h += '<p class="muted">Отметок пока нет. После каждой карты тренер спросит, на какие навыки она, — поправь, если он видит не так.</p>';
   }
+  const sy = lb.sync;
+  h += '<p class="muted">' + (!lb.token ? 'На сайт отметки не уходят: нет ключа (labels_token в config.json).'
+    : !sy ? 'На сайт отметки уходят сами — через несколько секунд после каждой отметки.'
+    : sy.ok ? 'На сайте отметок: ' + sy.n + ' · отправлено ' + dt(sy.ts) + (sy.up ? ', новых и изменённых: ' + sy.up : '')
+    : '<span class="bad">Не удалось отправить на сайт: ' + esc(sy.error) + '</span> — попробую снова со следующей отметкой.') + '</p>';
   return h + '<div class="actions"><label class="muted"><input type="checkbox"' + (lb.ask ? ' checked' : '') +
     ' onchange="post(\'/api/coach/label\', {ask:this.checked})"> спрашивать после каждой карты</label></div></div>';
 }
