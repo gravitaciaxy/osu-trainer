@@ -35,6 +35,7 @@ PLAYS_DIR = os.path.join(COACH_DIR, "plays")
 STATE_JSON = os.path.join(COACH_DIR, "state.json")
 SCORES_JSON = os.path.join(COACH_DIR, "scores.json")
 METRICS_JSON = os.path.join(COACH_DIR, "metrics.json")
+LABELS_JSON = os.path.join(COACH_DIR, "labels.json")     # твои отметки навыков карт
 
 SESSION_GAP = 30 * 60           # перерыв больше - новая сессия
 NEW_DAYS = 7                    # «новая» карта - не игранная столько дней
@@ -315,14 +316,18 @@ def fair(s):
 
 
 def skill_scores(m):
-    """Оценки навыков карты 0..100 - те же формулы, по которым подбор ищет карты."""
+    """Оценки навыков карты 0..100 - те же формулы, по которым подбор ищет карты, с поправкой по твоим
+    отметкам похожих карт (raw и formula - без поправки)."""
+    adj = personal(m)
     out = []
     for key, cfg in skills.SKILLS.items():
         try:
-            v = cfg["score"](m)[0]
+            raw, why = cfg["score"](m)
         except (KeyError, TypeError, ValueError, ZeroDivisionError):
             continue
-        out.append(dict(key=key, title=cfg["title"], score=round(v), main=v >= cfg["min_score"]))
+        v = max(0.0, min(100.0, raw + adj[key][0])) if key in adj else raw
+        out.append(dict(key=key, title=cfg["title"], score=round(v), main=v >= cfg["min_score"], why=why,
+                        raw=round(raw), formula=raw >= cfg["min_score"], like=adj[key][1] if key in adj else None))
     out.sort(key=lambda x: -x["score"])
     return out
 
@@ -344,7 +349,8 @@ def _skillset(s):
     if not m:
         return None
     sc = skill_scores(m)
-    main = [x for x in sc if x["main"]][:3]
+    lab = label_for(s)                  # твоя отметка этой карты с этими модами важнее формул
+    main = [x for x in sc if x["key"] in lab["skills"]] if lab else [x for x in sc if x["main"]][:3]
     keys = {x["key"] for x in main}
     fits = []
     for key, lad in LADDERS.items():
@@ -357,7 +363,7 @@ def _skillset(s):
         step = next((i for i in range(len(lad["steps"])) if in_step(lad, i, v)), None)
         if step is not None:
             fits.append(dict(ladder=key, title=lad["title"], step=step, label=step_label(lad, step), value=_fmt(lad, v)))
-    return dict(main=main, scores=sc, fits=fits, mods=play_mods(s)[2], bpm=m["bpm"], length=m["length"],
+    return dict(main=main, scores=sc, fits=fits, mods=play_mods(s)[2], labeled=bool(lab), bpm=m["bpm"], length=m["length"],
                 stream_ratio=m["stream_ratio"], stream_bpm=m["stream_bpm"], burst_ratio=m.get("burst_ratio"),
                 burst_bpm=m.get("burst_bpm"), alt_ratio=m.get("alt_ratio"), max_run=m["max_run"],
                 aim_share=m["aim_share"], ar=round(m["ar"], 1), cs=round(m["cs"], 1), od=round(m["od"], 1))
@@ -382,6 +388,253 @@ def row(s, a=None):
     else:
         out["analyzed"] = False
     return out
+
+
+# ------------------------------------------------------ отметки навыков ----
+# После карты тренер спрашивает, на какие навыки она на самом деле. Отметка заменяет скиллсет этой
+# карты (с этими модами), а похожим картам сдвигает оценки навыков: так учатся и подсказки тренера,
+# и подбор - случайные карты, тренировки и «Подбор карт» в программе. Сайта это не касается.
+
+# признаки похожести карт: как у «похоже на эти карты» плюс bursts/alt, длина и OD
+KNN_FEATURES = dict(skills.PROFILE_FEATURES, burst_ratio=(0.1, 1.5), burst_bpm=(25.0, 0.8), alt_ratio=(0.05, 1.5),
+                    length=(60.0, 0.6), od=(0.5, 0.4))
+KNN_SIGMA = 0.6         # похожесть exp(-(d/σ)²): у сыгранных карт ближайшая соседка в среднем на d≈0.65
+KNN_MARGIN = 15         # отмеченная карта должна оказаться по нужную сторону порога навыка с таким запасом
+KNN_SHRINK = 0.3        # одна далёкая отметка сдвигает мало
+ASK_HOURS = 12          # спрашивать про попытки не старше
+
+_labels = dict(data=None, index=None)
+
+
+def load_labels():
+    if _labels["data"] is None:
+        d = _load(LABELS_JSON)
+        if d is None:                   # первый запуск: спрашивать с этого часа, старые попытки - нет
+            d = dict(since=time.time() - 3600)
+            _save(LABELS_JSON, dict(d, labels={}, asked={}, ask=True))
+        d.setdefault("labels", {})
+        d.setdefault("asked", {})
+        d.setdefault("ask", True)
+        d.setdefault("since", 0)
+        _labels["data"] = d
+    return _labels["data"]
+
+
+def save_labels(d):
+    now = time.time()
+    d["asked"] = {k: v for k, v in d["asked"].items() if now - v < 60 * DAY}
+    _save(LABELS_JSON, d)
+    _labels.update(data=d, index=None)
+    _skillsets.clear()
+
+
+def label_key(s):
+    return "%s|%s" % (s["md5"], play_mods(s)[1])
+
+
+def label_for(s):
+    return load_labels()["labels"].get(label_key(s))
+
+
+def _labels_index():
+    idx = _labels["index"]
+    if idx is None:
+        idx = []
+        for lab in load_labels()["labels"].values():
+            m = lab.get("metrics")
+            if not m:
+                continue
+            sc = {}
+            for key, cfg in skills.SKILLS.items():
+                try:
+                    sc[key] = cfg["score"](m)[0]
+                except (KeyError, TypeError, ValueError, ZeroDivisionError):
+                    pass
+            idx.append(dict(m=m, skills=set(lab["skills"]), scores=sc, title=lab.get("title", "")))
+        _labels["index"] = idx
+    return idx
+
+
+def _distance(a, b):
+    num = den = 0.0
+    for k, (spread, w) in KNN_FEATURES.items():
+        d = (a.get(k, 0) - b.get(k, 0)) / spread
+        num += w * d * d
+        den += w
+    return math.sqrt(num / den)
+
+
+def personal(m, keys=None):
+    """Поправки к оценкам навыков по твоим отметкам похожих карт: {навык: (сдвиг, похожая поправленная карта)}.
+    Где формула ошиблась на похожей отмеченной карте - насколько её надо сдвинуть, чтобы она увидела карту
+    так же, как ты (с запасом). Сдвиги усредняются с весом похожести; отметки, где формула права, их разбавляют."""
+    idx = _labels_index()
+    if not idx or not m:
+        return {}
+    near = []
+    for it in idx:
+        w = math.exp(-(_distance(m, it["m"]) / KNN_SIGMA) ** 2)
+        if w >= 0.05:
+            near.append((w, it))
+    out = {}
+    for key in keys or skills.SKILLS:
+        mn = skills.SKILLS[key]["min_score"]
+        num = den = 0.0
+        best = None
+        for w, it in near:
+            if key == "reading" and bool(m.get("hidden")) != bool(it["m"].get("hidden")):
+                continue                # отметка чтения с HD о карте без HD ничего не говорит (и наоборот)
+            s = it["scores"].get(key, 0.0)
+            if (key in it["skills"]) == (s >= mn):
+                target = s              # формула видит эту карту так же, как ты
+            else:
+                target = mn + KNN_MARGIN if key in it["skills"] else mn - KNN_MARGIN
+            num += w * (target - s)
+            den += w
+            if target != s and (best is None or w > best[0]):
+                best = (w, it["title"])
+        if best and abs(num) / (den + KNN_SHRINK) >= 1:
+            out[key] = (num / (den + KNN_SHRINK), best[1])
+    return out
+
+
+def personal_adjust(cfg, m, s, why):
+    """Хук подбора (a.adjust в trainer.make_scorer): оценка навыка с поправкой по твоим отметкам."""
+    key = next((k for k, v in skills.SKILLS.items() if v is cfg), None)
+    d = personal(m, [key]).get(key) if key else None
+    if not d:
+        return s, why
+    return max(0.0, min(100.0, s + d[0])), "%s · по твоим отметкам %+.0f (похожа на «%s»)" % (why, d[0], d[1])
+
+
+def ask_queue(sc=None, every=False):
+    """Свежие попытки, про которые стоит спросить: эта карта с этими модами ещё не отмечена, и про попытку
+    не спрашивали. Новые первыми, по одной на карту (every - все попытки)."""
+    d = load_labels()
+    if not d["ask"]:
+        return []
+    sc = sc if sc is not None else scores()
+    now, out, seen = time.time(), [], set()
+    for s in reversed(sc):
+        if now - s["ts"] > ASK_HOURS * 3600 or s["ts"] < d["since"]:
+            break
+        if s["id"] in d["asked"] or not fair(s):
+            continue
+        k = label_key(s)
+        if k in d["labels"] or (k in seen and not every) or not skillset(s):
+            continue
+        seen.add(k)
+        out.append(s)
+    return out
+
+
+def label_view(s, queue=0):
+    """Что показать в окошке «что это была за карта»."""
+    ss = skillset(s)
+    lab = label_for(s)
+    auto = [x["key"] for x in ss["scores"] if x["main"]][:3]
+    return dict(id=s["id"], title=s["title"], artist=s["artist"], diff=s["diff"], sr=s["sr"], bid=s["bid"],
+                mods=s["mods_list"], mods_name=ss["mods"], acc=round(s["acc"], 4), misses=s["misses"], ts=s["ts"],
+                auto=auto, chosen=lab["skills"] if lab else auto, labeled=bool(lab), queue=queue,
+                scores=[dict(key=x["key"], title=x["title"], score=x["score"], why=x["why"], like=x["like"])
+                        for x in ss["scores"]])
+
+
+def ask_view(sc):
+    q = ask_queue(sc)
+    return label_view(q[0], len(q)) if q else None
+
+
+def play_label(pid):
+    s = next((x for x in scores() if x["id"] == pid), None)
+    if not s or not skillset(s):
+        raise RuntimeError("Для этой попытки нет карты - скиллсет не посчитать")
+    return label_view(s)
+
+
+def set_label(pid, chosen=None, skip=False):
+    """Отметка навыков попытки (для этой карты с этими модами) или «пропустить»."""
+    with _lock:
+        s = next((x for x in scores() if x["id"] == pid), None)
+        if not s:
+            raise RuntimeError("Нет такой попытки")
+        d = load_labels()
+        k = label_key(s)
+        for x in ask_queue(every=True):     # и про другие попытки этой карты с этими модами не спрашивать
+            if label_key(x) == k:
+                d["asked"][x["id"]] = time.time()
+        d["asked"][pid] = time.time()
+        if not skip:
+            ss = skillset(s)
+            if not ss:
+                raise RuntimeError("Для этой попытки нет карты - скиллсет не посчитать")
+            d["labels"][label_key(s)] = dict(
+                skills=[k for k in skills.SKILLS if k in set(chosen or [])],
+                auto=[x["key"] for x in ss["scores"] if x["main"]][:3],          # что предложил тренер
+                formula=[x["key"] for x in ss["scores"] if x["formula"]][:3],    # что видят одни формулы
+                id=pid, ts=time.time(), title=s["title"], artist=s["artist"], diff=s["diff"], bid=s["bid"],
+                mods=ss["mods"], metrics=play_metrics(s))
+        save_labels(d)
+        if not skip:
+            recredit(s)
+
+
+def skip_all():
+    with _lock:
+        d = load_labels()
+        for s in ask_queue(every=True):
+            d["asked"][s["id"]] = time.time()
+        save_labels(d)
+
+
+def set_asking(on):
+    with _lock:
+        d = load_labels()
+        d["ask"] = bool(on)
+        save_labels(d)
+
+
+def recredit(s):
+    """Отметка поменяла скиллсет случайной карты - пересчитать её зачёт в лестницах. Зачёт, после которого
+    ступень уже поменялась, остаётся как есть."""
+    st = load_state()
+    r = st.get("random") or {}
+    entries = [h for h in r.get("history", []) + ([r["current"]] if r.get("current") else [])
+               if (h.get("result") or {}).get("id") == s["id"]]
+    if not entries:
+        return
+    kept = []
+    for key, ld in st["ladders"].items():
+        mine = [x for x in ld.get("random", []) if x["id"] == s["id"]]
+        if not mine:
+            continue
+        if all(x["step"] == ld["step"] for x in mine):
+            ld["random"] = [x for x in ld["random"] if x["id"] != s["id"]]
+        else:
+            kept.append(key)
+    old = entries[0]["result"].get("ladders") or []
+    new = [k for k in old if k["ladder"] in kept] + credit_random(st, s)
+    kind = row(s)["kind"]
+    for h in entries:
+        h["result"].update(ladders=new, kind=kind)
+    save_state(st)
+
+
+def labels_view():
+    """Отметки для «Профиля»: сколько, как часто формулы совпали с тобой и где расходятся чаще всего."""
+    d = load_labels()
+    labs = sorted(d["labels"].values(), key=lambda x: -x["ts"])
+    per = {}
+    for lab in labs:
+        user, formula = set(lab["skills"]), set(lab.get("formula", []))
+        for k in user | formula:
+            p = per.setdefault(k, dict(key=k, title=skills.SKILLS[k]["title"], both=0, extra=0, missed=0))
+            p["both" if k in user and k in formula else "extra" if k in formula else "missed"] += 1
+    return dict(n=len(labs), ask=d["ask"], agree=sum(1 for x in labs if set(x["skills"]) == set(x.get("formula", []))),
+                skills=sorted(per.values(), key=lambda p: (-(p["extra"] + p["missed"]), p["title"])),
+                recent=[dict(title=x["title"], artist=x["artist"], diff=x["diff"], mods=x.get("mods", ""), id=x["id"],
+                             skills=[skills.SKILLS[k]["title"] for k in x["skills"]],
+                             formula=[skills.SKILLS[k]["title"] for k in x.get("formula", [])]) for x in labs[:12]])
 
 
 def aggregate(analyses):
@@ -600,7 +853,7 @@ def profile_view():
         top = [w["tag"] for w in weak[:3]]
         return dict(plays=len(recent), notes=agg["n"], agg=agg, weak=weak, insights=insights(agg), timing=timing,
                     habits=habits(sessions(sc)), series=daily_series(sc, top), series_names={t: TAG_INFO[t][0] for t in top},
-                    types=by_type(recent))
+                    types=by_type(recent), labels=labels_view())
 
 
 def by_type(plays):
@@ -846,6 +1099,7 @@ def pick_maps(lad, step, stars, exclude, count, log):
     a = trainer.coerce_params(params)
     a.metric_filter = lambda m: meets(lad, m) and in_step(lad, step, param_value(lad, m))
     a.exclude_md5 = set(exclude)
+    a.adjust = personal_adjust
     trainer.prepare(a)
     picked, _name = trainer.select(a, log)
     out, sids = [], set()
@@ -1027,6 +1281,7 @@ def random_pick(skill, exclude, log, steps=None):
         log("Навык: %s, звёзды %.1f–%.1f (твой уровень ~%.1f★)" % (cfg["title"], stars[0], stars[1], c))
         a = trainer.coerce_params(dict(skill=key, stars="%.2f-%.2f" % stars, pool=80, depth=100, crowd_weight=0.5,
                                        status="ranked,loved", lang="ru"))
+        a.adjust = personal_adjust          # твои отметки навыков похожих карт
         trainer.prepare(a)
         cands = []
         try:
@@ -1596,7 +1851,7 @@ def state_view():
             ladders=[ladder_view(st, k) for k in st["ladders"]],
             ladder_defs=[dict(key=k, title=v["title"], mod=v.get("mod"), unit=v["unit"]) for k, v in LADDERS.items()],
             tests=st["tests"], control=control_view(st, sc), sessions=session_list(), recent=recent,
-            random=random_view(st), need=NEED, of=OF, default_threshold=DEFAULT_THRESHOLD,
+            random=random_view(st), ask=ask_view(sc), need=NEED, of=OF, default_threshold=DEFAULT_THRESHOLD,
             tag_names={k: v[0] for k, v in TAG_INFO.items()})
 
 

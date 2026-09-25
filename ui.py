@@ -205,6 +205,8 @@ def fetch_remote_share(site, sid):
 def run_selection(params, ip=""):
     server = MODE == "server"
     a = trainer.coerce_params(params, server=server)
+    if not server and coach_on():
+        a.adjust = coach.personal_adjust        # поправки по твоим отметкам навыков в тренере
 
     def target(job):
         i18n.set_lang(a.lang)
@@ -378,6 +380,16 @@ def coach_post(path, body):
     if path == "/api/coach/apikeys":
         coach.save_keys(body.get("client_id"), body.get("client_secret"), body.get("user"))
         return {"ok": True}
+    if path == "/api/coach/label":
+        if "ask" in body:
+            coach.set_asking(bool(body["ask"]))
+        elif body.get("skip_all"):
+            coach.skip_all()
+        else:
+            chosen = body.get("skills")
+            coach.set_label(str(body.get("id", "")), [str(k) for k in chosen] if isinstance(chosen, list) else None,
+                            skip=bool(body.get("skip")))
+        return {"ok": True}
     if path == "/api/coach/pinned":
         return {"id": coach_job(coach.import_pinned).id}
     if path == "/api/coach/unbeaten":
@@ -501,6 +513,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if url.path in ("/api/coach/play", "/api/coach/session"):
                 view = (coach.play_view if url.path.endswith("play") else coach.session_view)(q.get("id", ""))
                 return self._send(200 if view else 404, view or {"error": "not found"})
+            if url.path == "/api/coach/label":
+                try:
+                    return self._send(200, coach.play_label(q.get("id", "")))
+                except RuntimeError as e:
+                    return self._send(404, {"error": str(e)})
         if url.path == "/api/job":
             job = JOBS.get(q.get("id", ""))
             if not job:

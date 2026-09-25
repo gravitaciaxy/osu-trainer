@@ -91,6 +91,13 @@
   .modal{position:fixed;inset:0;background:#000b;display:none;align-items:flex-start;justify-content:center;z-index:50;padding:30px 14px;overflow:auto}
   .modal.open{display:flex}
   .modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:12px;width:100%;max-width:1100px;padding:18px 20px}
+  .modal .box.narrow{max-width:660px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px}
+  .chip{padding:6px 11px;border-radius:16px;border:1px solid var(--line2);background:var(--panel2);color:var(--dim);cursor:pointer;font-size:13px}
+  .chip small{color:var(--faint);margin-left:3px}
+  .chip:hover{border-color:var(--accent)}
+  .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
+  .chip.on small{color:var(--accent-ink);opacity:.7}
   .jobpanel{position:fixed;right:16px;bottom:16px;width:min(560px,calc(100vw - 32px));background:#110d0f;border:1px solid var(--line2);
             border-radius:10px;z-index:60;box-shadow:0 10px 30px #000c}
   .jobhead{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
@@ -135,6 +142,7 @@
   <pre id="joblog"></pre>
 </div>
 <div class="modal" id="playmodal" onclick="if(event.target===this)closePlay()"><div class="box" id="playbox"></div></div>
+<div class="modal" id="askmodal" onclick="if(event.target===this)closeAsk()"><div class="box narrow" id="askbox"></div></div>
 
 <script>
 const $ = id => document.getElementById(id);
@@ -188,6 +196,7 @@ async function refresh(force){
     // следующую случайную карту готовит фон без новых попыток - её тоже надо показать сразу
     const rnd = JSON.stringify(S.random);
     if (S.updated !== LASTUPD || force || (TAB === 'today' && rnd !== LASTRND)){ LASTUPD = S.updated; LASTRND = rnd; render(); }
+    maybeAsk();
   } catch(e){ $('error').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; }
 }
 function render(){
@@ -473,7 +482,47 @@ async function openPlay(id){
   catch(e){ $('playbox').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; }
 }
 function closePlay(){ $('playmodal').classList.remove('open'); }
-document.addEventListener('keydown', e => { if (e.key === 'Escape') closePlay(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') ($('askmodal').classList.contains('open') ? closeAsk() : closePlay()); });
+
+/* ============================== «что это была за карта» ============================== */
+// после каждой новой карты: навыки, которые видит тренер, - поправь, если не так
+let ASK = null, ASKSEL = null, ASKCLOSED = null;
+function maybeAsk(){
+  const v = S && S.ask;
+  if (v && !$('askmodal').classList.contains('open') && ASKCLOSED !== v.id) showAsk(v);
+}
+async function openAsk(id){
+  try { showAsk(Object.assign(await api('/api/coach/label?id=' + encodeURIComponent(id)), {fromPlay:true})); } catch(e){ alert(e.message); }
+}
+function showAsk(v){ ASK = v; ASKSEL = new Set(v.chosen); renderAsk(); $('askmodal').classList.add('open'); }
+function closeAsk(){ if (ASK) ASKCLOSED = ASK.id; $('askmodal').classList.remove('open'); }
+function toggleAsk(k){ ASKSEL.has(k) ? ASKSEL.delete(k) : ASKSEL.add(k); renderAsk(); }
+function renderAsk(){
+  const v = ASK, name = k => (v.scores.find(x => x.key === k) || {title:k}).title;
+  const same = ASKSEL.size === v.auto.length && v.auto.every(k => ASKSEL.has(k));
+  $('askbox').innerHTML = '<div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1"><h2 style="margin:0 0 4px">Что это была за карта?</h2>' +
+    '<div class="muted">' + mapName(v) + ' ' + mods(v.mods) + ' · ' + num(v.sr, 2) + '★ · ' + pct(v.acc, 2) + ' · ' + v.misses + ' пр.</div></div>' +
+    '<button class="iconbtn" onclick="closeAsk()">Закрыть</button></div>' +
+    '<p>Тренер думает: <b>' + (v.auto.length ? v.auto.map(k => esc(name(k))).join(', ') : 'смешанная — ни один навык не выражен') + '</b>' +
+    (v.mods_name ? ' <span class="muted">(с модами ' + esc(v.mods_name) + ')</span>' : '') + '.</p>' +
+    '<p class="muted">Если не так — отметь навыки, на которые карта на самом деле. Похожим картам отметка сдвинет оценки навыков: и в разборе, и в подборе.</p>' +
+    '<div class="chips">' + v.scores.map(x => '<button class="chip' + (ASKSEL.has(x.key) ? ' on' : '') + '" title="' + esc(x.why + (x.like ? ' · поправлено по твоей отметке «' + x.like + '»' : '')) +
+      '" onclick="toggleAsk(\'' + x.key + '\')">' + esc(x.title) + ' <small>' + x.score + '</small></button>').join('') + '</div>' +
+    '<div class="actions"><button class="btn go" onclick="sendAsk(false)">' + (same ? 'Верно' : ASKSEL.size ? 'Сохранить' : 'Сохранить: смешанная') + '</button>' +
+    (v.labeled ? '' : '<button class="btn" onclick="sendAsk(true)">Пропустить</button>') +
+    (v.queue > 1 ? '<button class="btn" onclick="askPost({skip_all:true})">Пропустить все (' + v.queue + ')</button>' : '') + '</div>' +
+    (v.queue ? '<p class="muted" style="margin-top:10px"><a href="#" onclick="askPost({ask:false});return false">Не спрашивать после карт</a> — включить обратно можно в «Профиле».</p>' : '');
+}
+async function askPost(body){
+  const v = ASK;
+  try {
+    await api('/api/coach/label', body);
+    $('askmodal').classList.remove('open'); ASK = null;
+    if (v && v.fromPlay && $('playmodal').classList.contains('open')) openPlay(v.id);
+    await refresh(); render();
+  } catch(e){ alert(e.message); }
+}
+function sendAsk(skip){ askPost(skip ? {id:ASK.id, skip:true} : {id:ASK.id, skills:[...ASKSEL]}); }
 function playDetail(v){
   const r = v.row, a = v.analysis;
   let h = '<div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1"><h2 style="margin:0 0 4px">' + mapName(r) + ' ' + mods(r.mods) + '</h2>' +
@@ -488,7 +537,7 @@ function playDetail(v){
   h += '<div class="kpi"><div class="v">' + num(sm.ur) + '</div><div class="l">UR</div></div>' +
     '<div class="kpi"><div class="v">' + (sm.mean > 0 ? '+' : '') + num(sm.mean, 1) + '</div><div class="l">сдвиг, мс</div></div>' +
     '<div class="kpi"><div class="v">' + pct(sm.early, 0) + '</div><div class="l">нажатий раньше</div></div></div>';
-  h += skillsetBlock(v.skillset);
+  h += skillsetBlock(v.skillset, r.id);
   if (a.check) h += '<p class="muted">' + (a.check.diff === 0 ? '✓ Разбор совпал с подсчётом игры нота в ноту.' :
     'Разбор отличается от подсчёта игры на ' + a.check.diff + ' нот(ы)' + (a.info.mods.includes('CL') ? ' — с Classic sliders считаются иначе' : '') + '.') + '</p>';
   h += timeline(a);
@@ -506,10 +555,11 @@ function playDetail(v){
   if (v.attempts.length) h += '<h3>Другие попытки на этой карте</h3>' + playsTable(v.attempts.slice().reverse());
   return h;
 }
-function skillsetBlock(ss){
+function skillsetBlock(ss, id){
   if (!ss) return '';
   let h = '<h3>Что это за карта' + (ss.mods ? ' — с твоими модами' : '') + '</h3><p>' + (ss.main.length ? ss.main.map(x => '<span class="badge acc">' + esc(x.title) + ' ' + x.score + '</span>').join(' ')
-    : '<span class="muted">смешанная — ни один навык не выражен сильно</span>') + '</p>';
+    : '<span class="muted">смешанная — ни один навык не выражен сильно</span>') +
+    (ss.labeled ? ' <span class="badge ok">твоя отметка</span>' : '') + ' <button class="iconbtn" onclick="openAsk(\'' + id + '\')">Поправить</button></p>';
   const facts = ['BPM ' + num(ss.bpm)];
   if (ss.mods) facts.unshift(ss.mods + ': AR ' + num(ss.ar, 1) + ', CS ' + num(ss.cs, 1) + ', OD ' + num(ss.od, 1));
   if (ss.stream_ratio >= 0.05) facts.push('streams ' + pct(ss.stream_ratio, 0) + ' нот, ' + num(ss.stream_bpm) + ' BPM, самая длинная цепочка ' + ss.max_run);
@@ -588,8 +638,29 @@ async function renderProfile(){
       hb.buckets.map(b => '<tr><td>' + esc(b.label) + '</td><td class="num ' + (b.delta <= -0.015 ? 'bad' : b.delta >= 0.015 ? 'ok' : '') + '">' + (b.delta >= 0 ? '+' : '') + (b.delta * 100).toFixed(1) + '%</td><td class="num muted">' + b.n + ' карт</td></tr>').join('') + '</table></div>';
   }
   h += (hb.lines.length ? '<ul class="plain">' + hb.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '<p class="muted">Явного эффекта разминки или усталости пока не видно.</p>') + '</div>';
+  h += labelsCard(v.labels);
   h += '</div>';
   $('tab-profile').innerHTML = h;
+}
+
+function labelsCard(lb){
+  const same = (a, b) => a.length === b.length && a.every(x => b.includes(x));
+  let h = '<div class="card"><h2>Отметки навыков</h2>';
+  if (lb.n){
+    h += '<p>Отмечено карт: <b>' + lb.n + '</b>, формулы подбора увидели их так же на ' + lb.agree + ' (' + pct(lb.agree / lb.n, 0) + '). ' +
+      'Похожим картам отметки сдвигают оценки навыков — в подсказках тренера, случайных картах, тренировках и «Подборе карт» в программе.</p>';
+    if (lb.skills.some(p => p.extra + p.missed))
+      h += '<div class="tablewrap"><table><tr><th>Навык</th><th class="num">Совпало</th><th class="num">Формула видит лишний</th><th class="num">Формула не видит</th></tr>' +
+        lb.skills.map(p => '<tr><td>' + esc(p.title) + '</td><td class="num">' + p.both + '</td><td class="num ' + (p.extra ? 'bad' : '') + '">' + p.extra + '</td>' +
+          '<td class="num ' + (p.missed ? 'bad' : '') + '">' + p.missed + '</td></tr>').join('') + '</table></div>';
+    h += '<h3>Последние отметки</h3><ul class="plain">' + lb.recent.map(x => '<li><a href="#" onclick="openPlay(\'' + x.id + '\');return false">' + esc(x.artist) + ' — ' + esc(x.title) + '</a> ' +
+      (x.mods ? '<span class="badge mod">' + esc(x.mods) + '</span> ' : '') + '— ' + (x.skills.length ? x.skills.map(esc).join(', ') : 'смешанная') +
+      (same(x.skills, x.formula) ? '' : ' <span class="muted">(формулы: ' + (x.formula.length ? x.formula.map(esc).join(', ') : 'смешанная') + ')</span>') + '</li>').join('') + '</ul>';
+  } else {
+    h += '<p class="muted">Отметок пока нет. После каждой карты тренер спросит, на какие навыки она, — поправь, если он видит не так.</p>';
+  }
+  return h + '<div class="actions"><label class="muted"><input type="checkbox"' + (lb.ask ? ' checked' : '') +
+    ' onchange="post(\'/api/coach/label\', {ask:this.checked})"> спрашивать после каждой карты</label></div></div>';
 }
 
 /* ============================== «Прогресс» ============================== */
