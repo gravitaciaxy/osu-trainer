@@ -51,9 +51,12 @@ def _jumpstream(m):
 
 
 def _speed(m):
-    s = (40 * sc(m["nps_max"], 5.5, 13) + 35 * sc(m["stream_bpm"], 165, 245)
-         + 25 * sc(m["stream_ratio"], 0.1, 0.45))
-    return s, _("пик %.1f нот/с, %.0f BPM", m["nps_max"], m["stream_bpm"])
+    # доля нот в bursts и их скорость; плотность alt-карт (частые 1/2 с прыжками) - не bursts
+    s = (40 * sc(m["burst_ratio"], 0.08, 0.35) + 35 * sc(m["burst_bpm"], 140, 220)
+         + 25 * sc(m["nps_max"], 5, 10))
+    s -= 60 * clamp((m["alt_ratio"] - 0.08) / 0.2)
+    return max(s, 0), _("bursts %.0f%% нот, %.0f BPM, пик %.1f нот/с",
+                        m["burst_ratio"] * 100, m["burst_bpm"], m["nps_max"])
 
 
 def _stamina(m):
@@ -123,9 +126,12 @@ SKILLS = {
         score=_jumpstream, min_score=55),
     "speed": dict(
         title="Speed / bursts", title_en="Speed / bursts",
-        desc="Пиковая плотность нот и короткие быстрые bursts на высоком BPM.",
-        desc_en="Peak note density and fast short bursts at high BPM.",
-        desc_es="Densidad máxima de notas y bursts cortos y rápidos a BPM alto.",
+        desc="Короткие быстрые bursts (3–8 нот) на высоком BPM и пиковая плотность нот. "
+             "Alt-карты — частые 1/2 с прыжками — сюда не попадают.",
+        desc_en="Fast short bursts (3–8 notes) at high BPM and peak note density. "
+                "Alt maps — dense 1/2 with jumps — don't count.",
+        desc_es="Bursts cortos y rápidos (3–8 notas) a BPM alto y densidad máxima de notas. "
+                "Los mapas de alt —1/2 densos con saltos— no cuentan.",
         aliases=["скорость", "спид", "burst", "бёрсты"],
         queries=["speed", "burst", "fast", "spam", "high bpm"],
         score=_speed, min_score=55),

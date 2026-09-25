@@ -165,6 +165,22 @@ def metrics(text):
                       if stream_gaps else 0)
     long_runs = sum(1 for r in runs if len(r) >= 16)
 
+    # --- bursts и alt. Bursts - короткие (3-8 нот) быстрые цепочки без больших прыжков. Alt - быстрые
+    # ноты с большим spacing (частые 1/2 с прыжками на высоком BPM, как Meikaruza или Ooedo Ranvu):
+    # плотность нот у них высокая, но это не bursts, и подбор speed их отсеивает ---
+    burst_runs, cur = [], []
+    for g in gaps + [(10 ** 9, 0, 0, 0)]:
+        if g[0] <= STREAM_MAX_MS and g[2] <= 1.0:
+            cur.append(g)
+            continue
+        if 2 <= len(cur) <= 7:
+            burst_runs.append(cur)
+        cur = []
+    burst_ratio = sum(len(r) + 1 for r in burst_runs) / len(hits)
+    burst_gaps = sorted(g[0] for r in burst_runs for g in r)
+    burst_bpm = 15000.0 / burst_gaps[len(burst_gaps) // 2] if burst_gaps else 0
+    alt_ratio = sum(1 for g in gaps if g[0] <= STREAM_MAX_MS and g[2] >= 1.2) / len(gaps)
+
     # --- аим/джампы: скорость курсора на 1/2+ ---
     aim_gaps = [g for g in gaps if 0.35 <= g[1] <= 1.6]
     if aim_gaps:
@@ -230,6 +246,9 @@ def metrics(text):
         stream_spacing=round(stream_spacing, 2),
         max_run=max_run,
         long_runs=long_runs,
+        burst_ratio=round(burst_ratio, 3),
+        burst_bpm=round(burst_bpm, 1),
+        alt_ratio=round(alt_ratio, 3),
         aim_velocity=round(aim_velocity, 2),
         aim_spacing=round(aim_spacing, 2),
         aim_share=round(aim_share, 3),

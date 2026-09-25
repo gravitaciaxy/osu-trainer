@@ -71,8 +71,10 @@ LADDERS = {
     "streams": dict(title="Streams", skill="streams", param="stream_bpm", unit="BPM streams", fmt="%.0f",
                     steps=[150, 160, 170, 180, 190, 200, 210, 220, 230, 240, 250],
                     need=dict(stream_ratio=0.2, max_run=9)),
-    "speed": dict(title="Speed / bursts", skill="speed", param="nps_max", unit="нот/с на пике", fmt="%.0f",
-                  steps=[6, 7, 8, 9, 10, 11, 12, 13]),
+    # по BPM самих bursts: по плотности нот сюда попадали alt-карты (частые 1/2 с прыжками)
+    "speed": dict(title="Speed / bursts", skill="speed", param="burst_bpm", unit="BPM bursts", fmt="%.0f",
+                  steps=[160, 170, 180, 190, 200, 210, 220, 230, 240, 250],
+                  need=dict(burst_ratio=0.2), limit=dict(alt_ratio=0.1)),
     "stamina": dict(title="Stamina", skill="stamina", param="length", unit="секунд, streams от 30%", fmt="%.0f",
                     steps=[90, 120, 150, 180, 210, 240, 300, 360], need=dict(stream_ratio=0.3)),
     "jumps": dict(title="Jumps / aim", skill="jumps", param="aim_velocity", unit="скорость курсора", fmt="%.0f",
@@ -217,8 +219,8 @@ def analysis(s):
 def map_metrics(file_hash):
     """Метрики карты (как у подбора) по файлу .osu из игры - для стартовой ступени."""
     cache = _load(METRICS_JSON, {}) or {}
-    if file_hash in cache:
-        return cache[file_hash]
+    if file_hash in cache and (cache[file_hash] is None or "alt_ratio" in cache[file_hash]):
+        return cache[file_hash]                 # записи до появления bursts/alt считаются заново
     path = _files(file_hash)
     m = None
     if path and os.path.exists(path):
@@ -470,7 +472,8 @@ def param_value(lad, m):
 
 
 def meets(lad, m):
-    return all(m.get(k, 0) >= v for k, v in lad.get("need", {}).items())
+    return (all(m.get(k, 0) >= v for k, v in lad.get("need", {}).items())
+            and all(m.get(k, 0) <= v for k, v in lad.get("limit", {}).items()))
 
 
 def step_window(lad, i):
@@ -846,11 +849,11 @@ def diagnose(test, sc):
     mods = {g: round(statistics.fmean(v), 4) for g, v in groups.items()}
     ladders, reasons = [], []
     for w in wk:
-        if w["ladder"] and w["ladder"] not in ladders:
+        if w["ladder"] and w["ladder"] not in ladders and len(ladders) < 3:
             ladders.append(w["ladder"])
             reasons.append("%s: %s" % (w["name"], w["text"]))
     nm = mods.get("NM")
-    for g, key in (("DT", "dt"), ("HR", "hr"), ("HD", "hd")):
+    for g, key in (("DT", "dt"), ("HR", "hr"), ("HD", "hd")):     # лестницы с модом - всегда, сверх трёх
         if nm is not None and g in mods and mods[g] < nm - 0.02:
             ladders.append(key)
             reasons.append("С %s точность %.1f%% против %.1f%% без модов" % (g, mods[g] * 100, nm * 100))
@@ -860,7 +863,7 @@ def diagnose(test, sc):
             ladders.append(top["ladder"])
             reasons.append("Явной слабости нет; больше всего ошибок — %s" % top["name"])
     return dict(created=time.time(), plays=len(plays), agg=agg, weak=wk, insights=insights(agg), mods=mods,
-                ladders=ladders[:3], reasons=reasons[:4])
+                ladders=ladders, reasons=reasons)
 
 
 def finish_test(tid):
