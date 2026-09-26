@@ -41,7 +41,7 @@ SRC="$(find "$TMP/src" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
 
 id osutrainer >/dev/null 2>&1 || useradd --system --home-dir "$APP" --no-create-home --shell /usr/sbin/nologin osutrainer
 mkdir -p "$APP/cache"
-for f in analyze.py coach.py collector.py config.py feedback.py i18n.py labels.py liquipedia.py net.py osu_api.py pools.py replay.py skills.py trainer.py ui.py index.html; do
+for f in analyze.py coach.py collector.py config.py feedback.py i18n.py labels.py liquipedia.py net.py osu_api.py pools.py replay.py skills.py trainer.py ui.py verdict.py index.html; do
     cp "$SRC/$f" "$APP/$f"
 done
 rm -rf "$APP/data"

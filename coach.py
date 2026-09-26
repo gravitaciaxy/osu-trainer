@@ -31,6 +31,7 @@ import pools
 import replay
 import skills
 import trainer
+import verdict
 
 COACH_DIR = os.path.join(config.CACHE_DIR, "coach")
 PLAYS_DIR = os.path.join(COACH_DIR, "plays")
@@ -44,9 +45,9 @@ SESSION_GAP = 30 * 60           # перерыв больше - новая се�
 NEW_DAYS = 7                    # «новая» карта - не игранная столько дней
 CONTROL_EVERY_DAYS = 14         # контрольный день
 OLD_DAYS = 60                   # результат старше - «старый ты»
-NEED, OF = 3, 5                 # ступень сдана, если порог взят на NEED картах из OF
+NEED, OF = 3, 5                 # ступень сдана, если засчитаны NEED карт из OF (зачёт карты - verdict.py)
 WARMUP_N = 3
-DEFAULT_THRESHOLD = dict(acc=0.96, misses=2)
+SOFT_MAX = 3                    # «мягче порог» можно выбрать столько раз
 FAILS_TO_ESCAPE = 3             # столько несданных тренировок подряд - тренер предлагает выход
 DIFF_MODS = {"DT", "NC", "HT", "DC", "HR", "EZ", "DA", "WU", "WD", "AS"}
 DAY = 86400
@@ -988,9 +989,10 @@ def play_view(pid):
             a = analysis(s)
             prev = [row(x) for x in scores() if x["md5"] == s["md5"] and x["id"] != pid]
             ss = skillset(s)
-            if ss:                              # где эта карта на твоих лестницах
-                ladders = load_state()["ladders"]
-                ss = dict(ss, fits=[dict(f, yours=ladders[f["ladder"]]["step"] if f["ladder"] in ladders else None)
+            if ss:                              # где эта карта на твоих лестницах и как она пошла бы в зачёт
+                st = load_state()
+                ss = dict(ss, fits=[dict(f, yours=st["ladders"][f["ladder"]]["step"] if f["ladder"] in st["ladders"] else None,
+                                         verdict=judgement(s, f["ladder"], soft_level(st, f["ladder"])))
                                     for f in ss["fits"]])
             return dict(row=row(s, a), analysis=a, attempts=prev[-10:], skillset=ss,
                         weak=weaknesses(aggregate([a]), min_n=12) if a and not a.get("error") else [],
@@ -1076,8 +1078,20 @@ def initial_step(lad, sc):
     return 0
 
 
-def threshold(st, key):
-    return (st["ladders"].get(key) or {}).get("threshold") or dict(DEFAULT_THRESHOLD)
+def _soft_from(thr):
+    """Порог прежнего вида (точность от 96% и не больше 2 промахов) -> сколько раз его смягчали: каждый раз было
+    −2% точности и +1 промах."""
+    return min(SOFT_MAX, max(0, round((0.96 - thr["acc"]) / 0.02))) if thr else 0
+
+
+def soft_level(st, key):
+    """Сколько раз смягчали зачёт ступени («мягче порог»)."""
+    ld = st["ladders"].get(key) or {}
+    return ld["soft"] if "soft" in ld else _soft_from(ld.get("threshold"))
+
+
+def training_soft(st, tr):
+    return tr["soft"] if "soft" in tr else _soft_from(tr["threshold"]) if tr.get("threshold") else soft_level(st, tr["ladder"])
 
 
 def add_ladder(st, key, sc):
@@ -1086,14 +1100,36 @@ def add_ladder(st, key, sc):
     if key not in st["ladders"]:
         step = initial_step(LADDERS[key], sc)
         st["ladders"][key] = dict(step=step, best=step, start=step, created=time.time(), fails_in_row=0,
-                                  escape=False, threshold=None)
+                                  escape=False, soft=0)
     if not st["active"]:
         st["active"] = key
     return st["ladders"][key]
 
 
-def passed(s, thr):
-    return s["rank"] >= 0 and s["acc"] >= thr["acc"] and s["misses"] <= thr["misses"]
+_judged = {}
+
+
+def judgement(s, key, soft=0):
+    """Зачёт попытки для лестницы (verdict.py): по разбору повтора - справился ли с навыком ступени, срывы это
+    или развал, точность по нормам состава карты. Без разбора - только по итогу игры."""
+    ck = (s["id"], key, soft)
+    v = _judged.get(ck)
+    if v is None:
+        a = analysis(s)
+        v = (verdict.judge(a, key, soft, s.get("breaks", 0)) if a and not a.get("error") and a.get("timeline")
+             else verdict.fallback(s, soft))
+        if s["rank"] < 0:
+            v = dict(v, ok=False, level="fail", reason="failed", title="карта не пройдена", fails=["failed"] + v["fails"])
+        _judged[ck] = v
+    return v
+
+
+def verdict_brief(v, lines=True):
+    """Что из зачёта хранить при результате: итог, почему и (для тренировок) объяснение."""
+    out = dict(ok=v["ok"], level=v["level"], why=v["title"])
+    if lines:
+        out["lines"] = v["lines"]
+    return out
 
 
 def _first_plays(sc, md5s, since, mod):
@@ -1109,18 +1145,17 @@ def evaluate(st, sc):
     """Проверка открытых тренировок, теста и контрольных дней по новым результатам."""
     for tr in st["trainings"]:
         lad = LADDERS.get(tr["ladder"])
-        if not lad:
-            continue
-        thr = tr.get("threshold") or threshold(st, tr["ladder"])
+        if not lad or tr["status"] != "open":
+            continue                        # закрытая тренировка остаётся такой, какой её засчитали
+        soft = training_soft(st, tr)
         firsts = _first_plays(sc, {m["md5"] for m in tr["maps"]}, tr["created"], lad.get("mod"))
         res = {}
         for md5, s in firsts.items():
             a = analysis(s)
-            res[md5] = dict(id=s["id"], acc=round(s["acc"], 4), misses=s["misses"], ts=s["ts"], ok=passed(s, thr),
-                            ur=a["summary"]["ur"] if a and not a.get("error") else None)
+            res[md5] = dict(id=s["id"], acc=round(s["acc"], 4), misses=s["misses"], ts=s["ts"],
+                            ur=a["summary"]["ur"] if a and not a.get("error") else None,
+                            **verdict_brief(judgement(s, tr["ladder"], soft)))
         tr["results"] = res
-        if tr["status"] != "open":
-            continue
         n_ok = sum(1 for r in res.values() if r["ok"])
         n_bad = len(res) - n_ok
         total = len(tr["maps"])
@@ -1155,9 +1190,9 @@ def escape(st, key, choice):
     ld = st["ladders"][key]
     if choice == "back":
         ld["step"] = max(0, ld["step"] - 1)
-    elif choice == "soften":
-        thr = threshold(st, key)
-        ld["threshold"] = dict(acc=round(max(0.90, thr["acc"] - 0.02), 3), misses=thr["misses"] + 1)
+    elif choice == "soften":            # норма точности ниже, допуски срывов и развалов шире (verdict.judge soft)
+        ld["soft"] = min(SOFT_MAX, soft_level(st, key) + 1)
+        ld.pop("threshold", None)
     ld["fails_in_row"] = 0
     ld["escape"] = False
 
@@ -1246,7 +1281,7 @@ def build_training(key, log, write=True):
     with _lock:
         st = load_state()
         tr = dict(id="t%d" % int(time.time()), ladder=key, step=step, created=time.time(), maps=maps, warmup=warm,
-                  status="open", results={}, threshold=dict(threshold(st, key)))
+                  status="open", results={}, soft=soft_level(st, key))
     if write:
         to_library(warm + maps, log)
     with _lock:
@@ -1265,8 +1300,8 @@ def build_training(key, log, write=True):
     if warm:
         log("Разминка, коды для поиска в выборе карты: %s" % codes(warm))
     log("Карты ступени: %s" % codes(maps))
-    log("Порог ступени: %d карты из %d с точностью от %.0f%% и не больше %d промахов." % (
-        min(NEED, len(maps)), len(maps), tr["threshold"]["acc"] * 100, tr["threshold"]["misses"]))
+    log("Зачёт ступени: %d карты из %d. %s" % (min(NEED, len(maps)), len(maps), verdict.rules(tr["soft"])))
+    log("Разбор каждой сыгранной карты — во вкладке «Лестницы» и в разборе карты.")
     return tr
 
 
@@ -1287,17 +1322,21 @@ def ladder_view(st, key):
     history = []
     for t in trs:
         res = list(t.get("results", {}).values())
+        why = collections.Counter(r["why"] for r in res if not r["ok"] and r.get("why"))
         history.append(dict(id=t["id"], step=t["step"], created=t["created"], status=t["status"],
                             ok=sum(1 for r in res if r["ok"]), played=len(res), total=len(t["maps"]),
                             acc=round(statistics.fmean(r["acc"] for r in res), 4) if res else None,
                             misses=round(statistics.fmean(r["misses"] for r in res), 1) if res else None,
                             ur=round(statistics.fmean(r["ur"] for r in res if r.get("ur")), 1)
-                            if any(r.get("ur") for r in res) else None))
+                            if any(r.get("ur") for r in res) else None,
+                            why=[("%s ×%d" % (k, n)) if n > 1 else k for k, n in why.most_common()]))
     rnd = ld.get("random", [])
     window = [x for x in rnd if x["step"] == ld["step"]][-OF:]
+    soft = soft_level(st, key)
     return dict(key=key, title=lad["title"], mod=lad.get("mod"), step=ld["step"], best=ld.get("best", ld["step"]),
                 start=ld.get("start", 0), steps=[step_label(lad, i) for i in range(len(lad["steps"]))],
-                threshold=threshold(st, key), escape=ld.get("escape"), fails_in_row=ld.get("fails_in_row", 0),
+                soft=soft, rule=verdict.rule_points(soft), soft_max=SOFT_MAX,
+                escape=ld.get("escape"), fails_in_row=ld.get("fails_in_row", 0),
                 active=st["active"] == key, history=history, free=free_play(st, key),
                 random=dict(window=window, ok=sum(1 for x in window if x["ok"]), total=len(rnd),
                             ups=ld.get("random_ups", 0)),
@@ -1307,7 +1346,7 @@ def ladder_view(st, key):
 def free_play(st, key, days=14):
     """Карты текущей ступени, сыгранные вне тренировок и случайных карт (соло и мультиплеер): в зачёт
     не идут, но показывают, как ты тянешь эту ступень в обычной игре."""
-    lad, step, thr = LADDERS[key], st["ladders"][key]["step"], threshold(st, key)
+    step, soft = st["ladders"][key]["step"], soft_level(st, key)
     in_trainings = {m["md5"] for t in st["trainings"] if t["ladder"] == key for m in t["maps"]}
     r = st.get("random") or {}
     in_trainings |= {h["md5"] for h in r.get("history", []) + ([r["current"]] if r.get("current") else [])}
@@ -1318,7 +1357,7 @@ def free_play(st, key, days=14):
         ss = skillset(s)
         if ss and any(f["ladder"] == key and f["step"] == step for f in ss["fits"]):
             out.append(dict(id=s["id"], title=s["title"], diff=s["diff"], acc=round(s["acc"], 4), misses=s["misses"],
-                            ok=passed(s, thr)))
+                            **verdict_brief(judgement(s, key, soft), lines=False)))
     return dict(days=days, plays=out[-8:], n=len(out), ok=sum(1 for x in out if x["ok"]),
                 acc=round(statistics.fmean(x["acc"] for x in out), 4) if out else None)
 
@@ -1610,7 +1649,7 @@ def random_next(log, skill=None, popular=None):
     log("Готово: %s — %s [%s], %.2f★ · %s%s." % (pick["artist"], pick["title"], pick["diff"], pick["sr"], pick["skill_title"],
                                                  " · популярная" if pick.get("popular") else ""))
     if pick.get("ladder"):
-        log("Ступень %d лестницы %s (%s): возьмёшь порог — пойдёт в зачёт." % (
+        log("Ступень %d лестницы %s (%s): сыграешь в зачёт — пойдёт в копилку ступени." % (
             pick["ladder_step"] + 1, pick["ladder_title"], pick["ladder_label"]))
     log("Код для поиска в выборе карты: %s" % pick["bid"])
     return pick
@@ -1625,8 +1664,8 @@ def random_stop():
 
 def credit_random(st, s):
     """Случайная карта в зачёт лестниц - по скиллсету с модами попытки. Карта твоей ступени идёт в зачёт
-    как карта тренировки: из последних OF таких карт порог взят на NEED - ступень сдана. Карта выше
-    ступени засчитывается, только если порог взят (провал на ней о твоей ступени ничего не говорит),
+    как карта тренировки (verdict.py): из последних OF таких карт засчитаны NEED - ступень сдана. Карта выше
+    ступени засчитывается, только если зачёт взят (провал на ней о твоей ступени ничего не говорит),
     ниже - не засчитывается. Проиграть случайными картами нельзя: несданные тренировки они не копят."""
     out = []
     ss = skillset(s)
@@ -1637,12 +1676,13 @@ def credit_random(st, s):
         lad, step, log = LADDERS[key], ld["step"], ld.setdefault("random", [])
         if any(x["id"] == s["id"] for x in log):
             continue
-        ok = passed(s, threshold(st, key))
-        item = dict(ladder=key, title=lad["title"], step=step, map_step=f["step"], ok=ok)
+        v = verdict_brief(judgement(s, key, soft_level(st, key)), lines=False)
+        ok = v["ok"]
+        item = dict(ladder=key, title=lad["title"], step=step, map_step=f["step"], **v)
         if f["step"] < step or (f["step"] > step and not ok):
             out.append(dict(item, counted=False))
             continue
-        log.append(dict(id=s["id"], step=step, ok=ok, ts=s["ts"], title=s["title"], diff=s["diff"], value=f["value"]))
+        log.append(dict(id=s["id"], step=step, ts=s["ts"], title=s["title"], diff=s["diff"], value=f["value"], **v))
         del log[:-60]
         window = [x for x in log if x["step"] == step][-OF:]
         got = sum(1 for x in window if x["ok"])
@@ -2393,7 +2433,7 @@ def plan(st, sc):
         items.append(dict(kind="warmup", ladder=key, title=lv["title"],
                           label=lv["steps"][max(0, lv["step"] - 1)], has=bool(lv["open"] and lv["open"].get("warmup"))))
         items.append(dict(kind="training", ladder=key, title=lv["title"], step=lv["step"], label=lv["steps"][lv["step"]],
-                          open=lv["open"], threshold=lv["threshold"], escape=lv["escape"]))
+                          open=lv["open"], soft=lv["soft"], escape=lv["escape"]))
     f = focus(sc)
     if f:
         items.append(dict(kind="focus", active=key, is_active=(f["ladder"] == key),
@@ -2415,7 +2455,7 @@ def state_view():
             ladders=[ladder_view(st, k) for k in st["ladders"]],
             ladder_defs=[dict(key=k, title=v["title"], mod=v.get("mod"), unit=v["unit"]) for k, v in LADDERS.items()],
             tests=st["tests"], control=control_view(st, sc), sessions=session_list(), recent=recent,
-            random=random_view(st), ask=ask_view(sc), need=NEED, of=OF, default_threshold=DEFAULT_THRESHOLD,
+            random=random_view(st), ask=ask_view(sc), need=NEED, of=OF, rule=verdict.rule_points(),
             tag_names={k: v[0] for k, v in TAG_INFO.items()}, old_collections=old_collections(st))
 
 

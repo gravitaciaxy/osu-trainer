@@ -18,7 +18,7 @@ FILES = [
     "setup.bat", "start.bat", "setup.sh", "start.sh", "install.ps1", "install.sh", "release.py",
     "analyze.py", "coach.py", "collector.py", "config.py", "feedback.py", "i18n.py", "labels.py", "liquipedia.py", "net.py",
     "osu_api.py", "pools.py", "replay.py", "skills.py",
-    "trainer.py", "ui.py", "realm_tool.js", "index.html", "coach.html",
+    "trainer.py", "ui.py", "verdict.py", "realm_tool.js", "index.html", "coach.html",
     "deploy/README.md", "deploy/deploy.sh", "deploy/nginx-osu.conf", "deploy/osu-trainer.service",
     "deploy/server-install.sh", "deploy/telegram-setup.sh",
 ]
