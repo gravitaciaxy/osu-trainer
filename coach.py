@@ -2444,6 +2444,16 @@ def plan(st, sc):
     return items
 
 
+def page_version():
+    """Версия страницы тренера: coach.html читается с диска на каждый запрос, и открытая вкладка со старым кодом
+    падает на данных нового. По этой отметке она видит, что файл поменялся, и перезагружается сама."""
+    try:
+        st = os.stat(os.path.join(config.TOOL_DIR, "coach.html"))
+    except OSError:
+        return None
+    return "%d:%d" % (st.st_mtime_ns, st.st_size)
+
+
 def state_view():
     with _lock:
         st = load_state()
@@ -2456,7 +2466,8 @@ def state_view():
             ladder_defs=[dict(key=k, title=v["title"], mod=v.get("mod"), unit=v["unit"]) for k, v in LADDERS.items()],
             tests=st["tests"], control=control_view(st, sc), sessions=session_list(), recent=recent,
             random=random_view(st), ask=ask_view(sc), need=NEED, of=OF, rule=verdict.rule_points(),
-            tag_names={k: v[0] for k, v in TAG_INFO.items()}, old_collections=old_collections(st))
+            tag_names={k: v[0] for k, v in TAG_INFO.items()}, old_collections=old_collections(st),
+            page=page_version())
 
 
 def progress_view():

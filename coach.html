@@ -329,10 +329,21 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => switchT
 addEventListener('hashchange', () => { const t = tabFrom(location.hash); if (t !== TAB){ showTab(t); render(); } });
 
 /* ============================== загрузка ============================== */
+// страница читается с диска на каждый запрос: поменялся файл - код этой вкладки устарел и может упасть на новых
+// данных программы, поэтому она перезагружается сама (не посреди задачи и не с открытым окошком отметок)
+let PAGEV = null;
+function stalePage(){
+  if (!S.page) return false;
+  if (PAGEV === null) PAGEV = S.page;
+  if (S.page === PAGEV || JOB || $('askmodal').classList.contains('open')) return false;
+  location.reload();
+  return true;
+}
 async function refresh(force){
   try {
     if (force) await api('/api/coach/refresh', {});
     S = await api('/api/coach/state');
+    if (stalePage()) return;
     $('error').innerHTML = S.error ? '<div class="errbox">' + esc(S.error) + '</div>' : '';
     $('info').innerHTML = 'уровень <b>~' + num(S.comfort, 2) + '★</b> · попыток: ' + S.plays + (S.updated ? ' · обновлено ' + ago(S.updated) : '');
     // следующую случайную карту готовит фон без новых попыток - её тоже надо показать сразу
