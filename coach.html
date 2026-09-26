@@ -678,7 +678,8 @@ function ladderItem(l){
 function renderLadders(){
   if (!LADOPEN) LADOPEN = new Set(S.active ? [S.active] : []);       // сначала раскрыта основная
   let h = '<div class="sechead"><h2>Лестницы</h2><span>ступень сдана, когда засчитаны ' + S.need + ' карты из ' + S.of + ' — в тренировке или среди последних ' + S.of + ' случайных карт ступени</span></div>';
-  h += '<details class="card rule"' + (RULEOPEN ? ' open' : '') + ' ontoggle="RULEOPEN=this.open"><summary><b>Как засчитывается карта</b> <span class="muted">— не «96% и 2 промаха», а разбор повтора: справился ли ты с навыком ступени</span></summary>' +
+  // программа, запущенная до зачёта по повтору, правила не присылает - тогда и карточки нет (страница читается с диска)
+  if (S.rule) h += '<details class="card rule"' + (RULEOPEN ? ' open' : '') + ' ontoggle="RULEOPEN=this.open"><summary><b>Как засчитывается карта</b> <span class="muted">— не «96% и 2 промаха», а разбор повтора: справился ли ты с навыком ступени</span></summary>' +
     rulePoints(S.rule) + '<p class="muted">Считается первая сохранённая попытка каждой карты. Полный разбор — в самой карте: нажми на неё в таблице тренировки или в «Разборах».</p></details>';
   if (!S.ladders.length) h += '<div class="card"><p>Лестниц пока нет. Их заведёт вступительный тест — или добавь сам.</p>' + ladderPicker() + '</div>';
   S.ladders.slice().sort((a, b) => (b.key === S.active) - (a.key === S.active)).forEach(l => h += ladderItem(l));
