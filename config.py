@@ -36,6 +36,9 @@ DEFAULTS = {
     "labels_token": "",
 }
 
+# что из настроек видит страница программы: ключи osu! API и labels_token в браузер не отдаём
+UI_KEYS = ("osu_data", "osu_exe", "contact", "project_url", "language")
+
 # репозиторий на GitHub (подставляется в команду установки и ссылки)
 REPO = "gravitaciaxy/osu-trainer"
 SITE_URL = "https://osu.gravitacia.art"
@@ -173,5 +176,5 @@ def status():
         realm_format=fmt, realm_ok=(fmt == REALM_FILE_FORMAT),
         expected_format=REALM_FILE_FORMAT,
         system=platform.system(),
-        config=load(),
+        config={k: v for k, v in load().items() if k in UI_KEYS},
     )
