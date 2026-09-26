@@ -343,7 +343,7 @@ def coach_on():
 
 def coach_job(fn):
     if any(j.kind == "coach" and j.state in ("queued", "running") for j in list(JOBS.values())):
-        raise RuntimeError("Подожди: тренер уже собирает коллекцию")
+        raise RuntimeError("Подожди: тренер уже готовит карты")
 
     def target(job):
         i18n.set_lang("ru")
@@ -382,6 +382,11 @@ def coach_post(path, body):
         return {"ok": True}
     if path == "/api/coach/controlday":
         return {"id": coach_job(coach.build_control_day).id}
+    if path == "/api/coach/collections":
+        if body.get("keep"):
+            coach.keep_old_collections()
+            return {"ok": True}
+        return {"id": coach_job(coach.remove_old_collections).id}
     if path == "/api/coach/random":
         action = str(body.get("action") or "next")
         if action == "stop":

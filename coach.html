@@ -216,7 +216,7 @@ document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
   render();
 });
 
-/* ============================== задачи (сборка коллекций) ============================== */
+/* ============================== задачи (подбор и скачивание карт) ============================== */
 async function startJob(path, body, title){
   try {
     const r = await api(path, body || {});
@@ -261,15 +261,17 @@ function trainingBlock(p){
   if (p.escape) h += escapeBox(p.ladder);
   if (tr){
     const res = tr.results || {}, ok = Object.values(res).filter(r => r.ok).length, played = Object.keys(res).length;
-    h += '<p>Сыграно ' + played + ' из ' + tr.maps.length + ', сдано <b class="' + (ok >= S.need ? 'ok' : '') + '">' + ok + '</b> из ' + Math.min(S.need, tr.maps.length) + ' нужных. ' +
-      'Коллекция в игре: <b>' + esc(tr.name) + '</b></p>';
-    if (tr.warmup && tr.warmup.length) h += '<h3>Разминка — ступенью ниже, в зачёт не идёт</h3><p class="muted">Коллекция «' + esc(tr.warmup_name) + '»: ' +
+    h += '<p>Сыграно ' + played + ' из ' + tr.maps.length + ', сдано <b class="' + (ok >= S.need ? 'ok' : '') + '">' + ok + '</b> из ' + Math.min(S.need, tr.maps.length) + ' нужных.</p>' +
+      '<p class="muted">Карты уже в библиотеке игры. Нажми на код карты, чтобы скопировать, и вставь его в поиск в выборе карты — lazer найдёт её по номеру. ' +
+      'Если поиск пустой, lazer ещё импортирует карту: подожди пару секунд.</p>';
+    if (tr.warmup && tr.warmup.length) h += '<h3>Разминка — ступенью ниже, в зачёт не идёт</h3><p class="muted">' +
       tr.warmup.map(m => esc(m.artist) + ' — ' + esc(m.title) + ' ' + codeChip(m)).join('; ') + '</p>';
     h += '<h3>Карты ступени</h3>' + mapsTable(tr.maps, res, {value:'параметр'});
     h += '<div class="actions"><button class="btn" onclick="finishTraining(\'' + tr.id + '\')">Закончить — несыгранные не в зачёт</button>' +
       '<button class="btn" onclick="buildTraining(\'' + p.ladder + '\')">Новая тренировка</button></div>';
   } else {
-    h += '<p>Соберу 5 новых карт этой ступени (которые ты не играл неделю) и 3 карты разминки ступенью ниже — обе коллекции появятся в игре.</p>' +
+    h += '<p>Соберу 5 новых карт этой ступени (которые ты не играл неделю) и 3 карты разминки ступенью ниже. Чего нет в игре — скачаю, ' +
+      'а играть их будешь по коду из поиска в выборе карты: коллекций тренер не делает.</p>' +
       '<div class="actions"><button class="btn go" onclick="buildTraining(\'' + p.ladder + '\')">Собрать разминку и тренировку</button></div>';
   }
   return h;
@@ -312,8 +314,7 @@ function randomCard(r){
       '<p>Код: ' + codeChip(c, true) + ' — нажми, чтобы скопировать, и вставь в поиск в выборе карты: lazer найдёт её по номеру. ' +
       'Если поиск пока пустой — lazer ещё импортирует карту, подожди пару секунд.</p>' +
       (c.ladder ? '<p>Ступень ' + (c.ladder_step + 1) + ' твоей лестницы <b>' + esc(c.ladder_title) + '</b> (' + esc(c.ladder_label) + '): возьмёшь порог — пойдёт в зачёт.</p>' : '') +
-      '<p class="muted">' + esc(c.why) + '. Ещё она лежит в коллекции «' + esc(r.collection) + '» — там только эта карта. ' +
-      'Сыграй её: результат появится здесь через несколько секунд после конца карты, и сразу будет следующая.</p>';
+      '<p class="muted">' + esc(c.why) + '. Сыграй её: результат появится здесь через несколько секунд после конца карты, и сразу будет следующая.</p>';
   } else if (c && c.result){
     const x = c.result;
     h += '<p>Сыграно: <b>' + mapName(c) + '</b> ' + mods(x.mods) + ' — <b>' + pct(x.acc, 2) + '</b> · ' + x.misses + ' пр.' +
@@ -339,8 +340,18 @@ function randomCard(r){
       '<td class="num">' + pct(x.result.acc, 2) + ' · ' + x.result.misses + ' пр.</td><td>' + (creditBadges(x.result.ladders) || '<span class="muted">—</span>') + '</td></tr>').join('') + '</table></div>';
   return h + '</div>';
 }
+function oldCollectionsCard(names){
+  if (!names || !names.length) return '';
+  return '<div class="card" style="grid-column:1/-1"><h2>Коллекции тренера больше не нужны</h2>' +
+    '<p>Тренер теперь не делает коллекций: карты скачиваются в общую библиотеку игры, а играешь ты их по коду — нажми на номер карты, ' +
+    'он скопируется, и вставь его в поиск в выборе карты.</p>' +
+    '<p class="muted">Раньше тренер собирал коллекции: ' + names.map(n => '«' + esc(n) + '»').join(', ') + '. ' +
+    'Могу убрать их из игры — карты останутся в библиотеке, а перед этим сделаю резервную копию базы.</p>' +
+    '<div class="actions"><button class="btn go" onclick="startJob(\'/api/coach/collections\', {}, \'Убираю коллекции тренера\')">Убрать из игры</button>' +
+    '<button class="btn" onclick="post(\'/api/coach/collections\', {keep:true})">Оставить</button></div></div>';
+}
 function renderToday(){
-  let h = '<div class="grid">' + randomCard(S.random);
+  let h = '<div class="grid">' + oldCollectionsCard(S.old_collections) + randomCard(S.random);
   for (const p of S.plan){
     if (p.kind === 'test'){
       const t = S.tests[S.tests.length - 1];
@@ -373,6 +384,7 @@ function renderToday(){
       h += '<div class="card"><h2>Контрольный день</h2>' +
         (p.maps ? '<p>' + (p.due ? '<b class="warn">Пора</b> — сыграй контрольные карты и сравни себя со старым собой.' :
           'Следующий через ' + p.days_left + ' дн.') + ' Контрольных карт: ' + p.maps + '.</p>' +
+          '<p class="muted">Чего нет в игре — скачаю; коды карт для поиска — на вкладке «Контрольные».</p>' +
           '<div class="actions"><button class="btn ' + (p.due ? 'go' : '') + '" onclick="startJob(\'/api/coach/controlday\', {}, \'Собираю контрольные карты\')">Собрать контрольные карты</button></div>'
           : '<p>Добавь карты «старого себя» — закреплённые скоры и карты, которые сейчас не можешь побить.</p><div class="actions"><button class="btn" onclick="switchTab(\'control\')">Добавить</button></div>') + '</div>';
     }
@@ -751,8 +763,8 @@ function renderTest(){
   }
   for (const t of tests){
     h += '<div class="card"><h2>' + esc(t.tournament) + ' ' + esc(t.edition) + ' · ' + esc(t.round) + ' <span class="badge ' + (t.status === 'done' ? 'ok' : 'warn') + '">' +
-      (t.status === 'done' ? 'итог подведён' : 'идёт') + '</span></h2><p class="muted">Собран ' + dt(t.created) + '. Коллекция «' + esc(t.name) + '». ' +
-      'Играй с модом слота; в зачёт идёт первая попытка.</p>' + mapsTable(t.maps, t.results, {slot:true});
+      (t.status === 'done' ? 'итог подведён' : 'идёт') + '</span></h2><p class="muted">Собран ' + dt(t.created) + '. ' +
+      'Играй с модом слота; в зачёт идёт первая попытка. Карту найдёшь по коду: скопируй его и вставь в поиск в выборе карты.</p>' + mapsTable(t.maps, t.results, {slot:true});
     if (t.status !== 'done') h += '<div class="actions"><button class="btn go" ' + (Object.keys(t.results).length >= 3 ? '' : 'disabled') +
       ' onclick="post(\'/api/coach/test/finish\', {id:\'' + t.id + '\'})">Подвести итог</button><span class="muted">Можно, когда сыграно хотя бы 3 карты; лучше — 70% пула.</span></div>';
     if (t.diagnosis){

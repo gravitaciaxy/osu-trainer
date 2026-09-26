@@ -1199,6 +1199,17 @@ def reserved_md5(st):
     return out
 
 
+def to_library(maps, log):
+    """Карты в игру без коллекций: чего нет в библиотеке lazer, скачать и отдать игре. Играются они по коду
+    из поиска в выборе карты, поэтому список коллекций тренер не засоряет."""
+    a = trainer.coerce_params({"lang": "ru", "no_collection": True})
+    trainer.apply([dict(m, local=False) for m in maps], "", a, log)
+
+
+def codes(maps):
+    return ", ".join(str(m["bid"]) for m in maps if m.get("bid"))
+
+
 def build_training(key, log, write=True):
     with _lock:
         st = load_state()
@@ -1234,17 +1245,10 @@ def build_training(key, log, write=True):
             warm = []
     with _lock:
         st = load_state()
-        n = sum(1 for t in st["trainings"] if t["ladder"] == key) + 1
-        label = step_label(lad, step)
         tr = dict(id="t%d" % int(time.time()), ladder=key, step=step, created=time.time(), maps=maps, warmup=warm,
-                  status="open", results={}, threshold=dict(threshold(st, key)),
-                  name="osu!drill · %s %d · %s" % (lad["title"], n, label),
-                  warmup_name="osu!drill · разминка · %s" % lad["title"] if warm else None)
+                  status="open", results={}, threshold=dict(threshold(st, key)))
     if write:
-        a = trainer.coerce_params({"lang": "ru"})
-        if warm:
-            trainer.apply(list(warm), tr["warmup_name"], a, log)
-        trainer.apply(list(maps), tr["name"], a, log)
+        to_library(warm + maps, log)
     with _lock:
         st = load_state()
         evaluate(st, scores())
@@ -1257,8 +1261,12 @@ def build_training(key, log, write=True):
         st["trainings"].append(tr)
         evaluate(st, scores())
         save_state(st)
-    log("Коллекция «%s» в игре. Порог ступени: %d карты из %d с точностью от %.0f%% и не больше %d промахов." % (
-        tr["name"], min(NEED, len(maps)), len(maps), tr["threshold"]["acc"] * 100, tr["threshold"]["misses"]))
+    log("")
+    if warm:
+        log("Разминка, коды для поиска в выборе карты: %s" % codes(warm))
+    log("Карты ступени: %s" % codes(maps))
+    log("Порог ступени: %d карты из %d с точностью от %.0f%% и не больше %d промахов." % (
+        min(NEED, len(maps)), len(maps), tr["threshold"]["acc"] * 100, tr["threshold"]["misses"]))
     return tr
 
 
@@ -1317,9 +1325,8 @@ def free_play(st, key, days=14):
 
 # ------------------------------------------------------- случайная карта ----
 # Одна карта случайного навыка около твоего уровня: сыграл - тренер видит результат и сам готовит
-# следующую. В игре она лежит в коллекции, где всегда ровно одна текущая карта.
+# следующую. Её находят по коду в поиске выбора карты.
 
-RANDOM_COLLECTION = "osu!drill · случайная"
 PREPARE_TIMEOUT = 300
 
 
@@ -1456,7 +1463,7 @@ def random_pick(skill, exclude, log, steps=None):
 
 
 def _deliver(m, log):
-    """Карта в игру: скачать и отдать lazer, если её нет, и сделать коллекцию ровно из неё."""
+    """Карта в игру: скачать и отдать lazer, если её ещё нет в библиотеке."""
     if m["md5"] not in {b["md5"] for b in trainer.local_library()}:
         log("Скачиваю %s — %s..." % (m["artist"], m["title"]))
         path = net.osz(m["sid"], trainer.DL)
@@ -1464,10 +1471,6 @@ def _deliver(m, log):
             return False
         trainer.import_into_osu([path])
         log("  отправил в osu! — во время игры lazer добавит её, когда выйдешь в меню")
-    log("Резервная копия базы: %s" % trainer.backup_realm())
-    pf = os.path.join(COACH_DIR, "random_payload.json")
-    _save(pf, [{"name": RANDOM_COLLECTION, "hashes": [m["md5"]]}])
-    trainer.realm_cmd("set", pf)
     return True
 
 
@@ -1529,7 +1532,7 @@ def random_next(log, skill=None):
     if pick.get("ladder"):
         log("Ступень %d лестницы %s (%s): возьмёшь порог — пойдёт в зачёт." % (
             pick["ladder_step"] + 1, pick["ladder_title"], pick["ladder_label"]))
-    log("Код для поиска в выборе карты: %s (или коллекция «%s»)" % (pick["bid"], RANDOM_COLLECTION))
+    log("Код для поиска в выборе карты: %s" % pick["bid"])
     return pick
 
 
@@ -1618,7 +1621,7 @@ def random_view(st):
     return dict(current=r["current"], auto=r["auto"], skill=r["skill"], preparing=busy, error=r.get("error"),
                 farm_ready=has_farm(),
                 history=[h for h in r["history"] if h.get("result")][-8:][::-1],
-                played=sum(1 for h in r["history"] if h.get("result")), collection=RANDOM_COLLECTION,
+                played=sum(1 for h in r["history"] if h.get("result")),
                 skills=[dict(key=k, title=v["title"]) for k, v in skills.SKILLS.items()])
 
 
@@ -1672,14 +1675,15 @@ def build_test(log, write=True):
     pools._save_bm(cache)
     if not maps:
         raise RuntimeError("Не удалось получить карты пула — зеркало не отвечает, попробуй позже")
-    name = "osu!drill · тест · %s %s · %s" % (key[0], key[1], key[2])
     if write:
-        trainer.apply(list(maps), name.strip(), trainer.coerce_params({"lang": "ru"}), log)
+        to_library(maps, log)
     with _lock:
         st = load_state()
         st["tests"].append(dict(id="x%d" % int(time.time()), created=time.time(), tournament=key[0],
-                                edition=key[1], round=key[2], name=name, maps=maps, status="open", results={}))
+                                edition=key[1], round=key[2], maps=maps, status="open", results={}))
         save_state(st)
+    log("")
+    log("Коды карт для поиска в выборе карты — на вкладке «Тест».")
     log("Играй карты с модом своего слота: HD1 — с HD, HR1 — с HR, DT1 — с DT; NM и TB — без модов, FM — как хочешь.")
     return maps
 
@@ -2184,15 +2188,15 @@ def build_control_day(log, write=True):
         maps = list(st["control"]["maps"].values())
     if not maps:
         raise RuntimeError("Контрольных карт пока нет — добавь их по ссылкам")
-    name = "osu!drill · контроль · %s" % time.strftime("%d.%m.%Y")
     if write:
-        trainer.apply([dict(m, local=False) for m in maps], name, trainer.coerce_params({"lang": "ru"}), log)
+        to_library(maps, log)
     with _lock:
         st = load_state()
-        st["control"]["days"].append(dict(created=time.time(), name=name, md5s=[m["md5"] for m in maps], results={}))
+        st["control"]["days"].append(dict(created=time.time(), md5s=[m["md5"] for m in maps], results={}))
         save_state(st)
-    log("Контрольный день начат: сыграй каждую карту по одному разу, первая попытка идёт в зачёт.")
-    return name
+    log("")
+    log("Контрольный день начат: сыграй каждую карту по одному разу, первая попытка идёт в зачёт. "
+        "Коды карт — на вкладке «Контрольные».")
 
 
 def evaluate_control(st, sc):
@@ -2227,7 +2231,7 @@ def control_view(st, sc):
     suggest = auto_control(st, sc)
     have = set(ctl["maps"]) | {x["md5"] for x in suggest}
     suggest += [x for x in (ctl.get("api_suggest") or {}).get("items", []) if x["md5"] not in have]
-    return dict(maps=rows, days=[dict(created=d["created"], name=d["name"], played=len(d.get("results", {})),
+    return dict(maps=rows, days=[dict(created=d["created"], played=len(d.get("results", {})),
                                       total=len(d["md5s"])) for d in days],
                 last=last, due=(last is None or time.time() - last >= CONTROL_EVERY_DAYS * DAY),
                 days_left=None if last is None else max(0, CONTROL_EVERY_DAYS - int((time.time() - last) // DAY)),
@@ -2235,6 +2239,53 @@ def control_view(st, sc):
                 api=dict(configured=osu_api.configured(), user=str(config.load().get("osu_user") or ""),
                          checked=(ctl.get("api_suggest") or {}).get("ts")),
                 profile=osu_profile_view(ctl))
+
+
+# ------------------------------------------------------ старые коллекции ----
+# До 2026-09-26 тренер клал каждую тренировку, разминку, тест и контрольный день в новую коллекцию, а
+# случайную карту - в коллекцию «osu!drill · случайная». Теперь карты только скачиваются в библиотеку и
+# играются по коду, а оставшиеся коллекции тренера убираются одной кнопкой (или остаются, если так решишь).
+
+OLD_RANDOM_COLLECTION = "osu!drill · случайная"
+
+
+def old_collections(st):
+    """Коллекции, которые тренер сделал раньше, - по именам из его же истории."""
+    if st.get("collections_cleanup"):
+        return []
+    names = [t.get(k) for t in st["trainings"] for k in ("name", "warmup_name")]
+    names += [t.get("name") for t in st["tests"]] + [d.get("name") for d in st["control"]["days"]]
+    r = st.get("random") or {}
+    if r.get("history") or r.get("current"):
+        names.append(OLD_RANDOM_COLLECTION)
+    return [n for n in dict.fromkeys(names) if n]
+
+
+def remove_old_collections(log):
+    with _lock:
+        names = old_collections(load_state())
+    have = {c["name"] for c in trainer.collections()}
+    gone = [n for n in names if n in have]
+    if gone:
+        log("Резервная копия базы: %s" % trainer.backup_realm())
+        for n in gone:
+            trainer.realm_cmd("remove", n)
+            log("Убрал коллекцию «%s»" % n)
+    else:
+        log("Коллекций тренера в игре уже нет.")
+    log("Карты остались в библиотеке игры, их коды — на страницах тренера.")
+    _close_cleanup("removed")
+
+
+def keep_old_collections():
+    _close_cleanup("kept")
+
+
+def _close_cleanup(how):
+    with _lock:
+        st = load_state()
+        st["collections_cleanup"] = how
+        save_state(st)
 
 
 # ------------------------------------------------------------- витрина ----
@@ -2276,7 +2327,7 @@ def state_view():
             ladder_defs=[dict(key=k, title=v["title"], mod=v.get("mod"), unit=v["unit"]) for k, v in LADDERS.items()],
             tests=st["tests"], control=control_view(st, sc), sessions=session_list(), recent=recent,
             random=random_view(st), ask=ask_view(sc), need=NEED, of=OF, default_threshold=DEFAULT_THRESHOLD,
-            tag_names={k: v[0] for k, v in TAG_INFO.items()})
+            tag_names={k: v[0] for k, v in TAG_INFO.items()}, old_collections=old_collections(st))
 
 
 def progress_view():
