@@ -400,6 +400,13 @@ def coach_post(path, body):
             coach.random_mode(skill, popular)
             return {"ok": True}
         return {"id": coach_job(lambda log: coach.random_next(log, skill, popular)).id}
+    if path == "/api/coach/warmup":
+        # карты разминки - из библиотеки игры, без сети: сразу ответом, не задачей (фон с картами не мешает)
+        action = str(body.get("action") or "start")
+        if action not in ("start", "reroll", "more", "finish"):
+            raise RuntimeError("Неизвестная команда")
+        coach.warmup(action)
+        return {"ok": True}
     if path == "/api/coach/apikeys":
         coach.save_keys(body.get("client_id"), body.get("client_secret"), body.get("user"))
         return {"ok": True}

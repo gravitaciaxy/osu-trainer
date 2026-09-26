@@ -128,10 +128,25 @@
   .task.due .ic{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
   .task.go .ic{border-color:var(--accent);color:var(--accent)}
   .task.later{opacity:.8}
+  .task.done .ic{border-color:#2f5d3a;color:var(--ok)}
   .task h2{margin-top:4px}
   .now-map{font-size:16px;font-weight:600;margin:2px 0 8px}
   .now-code{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0}
   .lastres{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+  /* разминка: карты по порядку - сыгранные с результатом, следующая выделена */
+  .warmlist{list-style:none;margin:12px 0 4px;padding:0}
+  .warmlist li{display:grid;grid-template-columns:24px minmax(0,1fr) auto;gap:2px 12px;align-items:center;padding:8px 6px;
+               border-top:1px solid var(--line);border-radius:8px}
+  .warmlist li:first-child{border-top-color:transparent}
+  .warmlist li.click{cursor:pointer}
+  .warmlist li.click:hover{background:var(--panel2)}
+  .warmlist li.next{background:#ff66aa12}
+  .warmlist .n{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:11.5px;font-weight:700;
+               border:1.5px solid var(--line2);color:var(--dim)}
+  .warmlist li.done .n{border-color:#2f5d3a;color:var(--ok)}
+  .warmlist li.next .n{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+  .warmlist .sub{color:var(--faint);font-size:12px;margin-top:2px}
+  .warmlist .res{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   .mini .kpis{gap:18px}
   .mini .kpi .v{font-size:18px}
 
@@ -268,7 +283,7 @@
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER = null, LASTUPD = null, LASTRND = null, LASTPROF = null;
-let JOBCLOCK = null, JOBHIDE = null, JOBSTART = 0, JOBFRAC = null, JOBFAILS = 0, LADOPEN = null, RULEOPEN = false;
+let JOBCLOCK = null, JOBHIDE = null, JOBSTART = 0, JOBFRAC = null, JOBFAILS = 0, LADOPEN = null, RULEOPEN = false, WARMOPEN = false;
 
 const OFFLINE = 'Программа osu!drill не отвечает — похоже, она закрыта. Запусти её (start.bat в папке osu-trainer): страница переподключится сама.';
 async function api(path, body){
@@ -349,8 +364,9 @@ async function refresh(force, redraw){
     if (redraw) LASTUPD = undefined;
     $('error').innerHTML = S.error ? '<div class="errbox">' + esc(S.error) + '</div>' : '';
     $('info').innerHTML = 'уровень <b>~' + num(S.comfort, 2) + '★</b> · попыток: ' + S.plays + (S.updated ? ' · обновлено ' + ago(S.updated) : '');
-    // следующую случайную карту готовит фон без новых попыток - её тоже надо показать сразу
-    const rnd = JSON.stringify(S.random);
+    // следующую случайную карту готовит фон без новых попыток - её тоже надо показать сразу;
+    // и разминка после перерыва снова «не сделана», хотя новых попыток нет
+    const rnd = JSON.stringify([S.random, S.warm && S.warm.state]);
     // и ход проверки профиля osu!: она идёт больше часа, а новых попыток за это время может не быть
     const pr = (S.control && S.control.profile) || {};
     const prof = JSON.stringify([pr.run, pr.ts]);
@@ -487,9 +503,10 @@ function trainingTask(p, wu, n){
     b += trainingBody(tr) + '<div class="actions"><button class="btn" onclick="finishTraining(\'' + tr.id + '\')">Закончить — несыгранные не в зачёт</button>' +
       '<button class="btn" onclick="buildTraining(\'' + p.ladder + '\')">Новая тренировка</button></div>';
   } else {
-    const warm = p.step > 0;
+    // в этой сессии уже была (или идёт) разминка - своя, ступенью ниже, тренировке не нужна
+    const warmed = warmedUp(), warm = p.step > 0 && !warmed;
     b += '<p>Соберу ' + (warm ? '3 карты разминки ступенью ниже' + (wu && wu.label && wu.label !== p.label ? ' (' + esc(wu.label) + ')' : '') + ' и ' : '') +
-      '5 новых карт этой ступени, которые ты не играл неделю' + (warm ? '' : ' (разминки нет — это первая ступень)') + '. ' +
+      '5 новых карт этой ступени, которые ты не играл неделю' + (warm ? '' : warmed ? ' — разминка у тебя уже есть' : ' (разминки нет — это первая ступень)') + '. ' +
       'Коды карт появятся здесь сразу после подбора; чего нет в игре — скачаю, а играешь по коду из поиска в выборе карты.</p>' +
       '<div class="actions"><button class="btn go" onclick="buildTraining(\'' + p.ladder + '\')">' + (warm ? 'Собрать разминку и тренировку' : 'Собрать тренировку') + '</button></div>';
   }
@@ -575,6 +592,73 @@ function randomTask(r, n){
     (c && c.result ? '<div class="lastres">' + resultLine(c.result, c) + '<p class="muted">Режим остановлен.</p></div>' : '') +
     '<div class="actions">' + rndSelect(r) + rndGo(r, 'Дай карту', true) + '</div>' + randomHistory(r));
 }
+/* разминка: знакомые карты полегче из библиотеки игры. Идёт - карточка наверху, как у случайных карт;
+   сделана в этой сессии - строка «✓» в плане; после перерыва больше 30 минут - снова первый пункт */
+const warmedUp = () => !!(S.warm && S.warm.state !== 'todo');
+const times = n => n + ' ' + (n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'раза' : 'раз');
+const signPct = d => (d >= 0 ? '+' : '−') + Math.abs(d * 100).toFixed(1) + '%';
+async function warm(action, el){
+  const w = S.warm;
+  if (action === 'start' && w && w.state === 'active' && !confirm('Собрать другую разминку? В этой сыграно ' + w.played + ' из ' + w.maps.length + ' карт.')) return;
+  if (el){ el.disabled = true; el.textContent = 'Подбираю…'; }
+  try { await api('/api/coach/warmup', {action}); await refresh(false, true); }
+  catch(e){ toast(e.message, 'err'); render(); }
+}
+const warmInfo = m => [esc(m.slot_title), num(m.sr, 2) + '★', mmss(m.len), m.bpm + ' BPM', m.plays ? 'играл ' + times(m.plays) : ''].filter(Boolean).join(' · ');
+// с чем сравнить: как ты обычно играешь карту в последние месяцы, а если давно не играл - лучший результат
+const warmBase = m => m.usual ? 'обычно ' + pct(m.usual.acc, 2) :
+  m.best ? 'лучший ' + pct(m.best.acc, 1) + ' (' + new Date(m.best.ts * 1000).getFullYear() + ')' : '';
+function warmLine(m, i, next){
+  const r = m.result, base = warmBase(m);
+  const res = r ? '<b>' + pct(r.acc, 2) + '</b> · ' + r.misses + ' пр. ' + mods(r.mods) +
+      (base ? '<div class="sub">' + base + (r.delta != null ? ' · <span class="' + (r.delta >= -0.01 ? 'ok' : 'warn') + '">' + signPct(r.delta) + '</span>' : '') + '</div>' : '')
+    : codeChip(m) + (base ? '<div class="sub">' + base + '</div>' : '');
+  return '<li class="' + (r ? 'done click' : next ? 'next' : '') + '"' + (r ? ' onclick="openPlay(\'' + r.id + '\')" title="Разбор попытки"' : '') + '>' +
+    '<span class="n">' + (r ? '✓' : i + 1) + '</span><div>' + mapName(m) + '<div class="sub">' + warmInfo(m) + '</div></div>' +
+    '<div class="res">' + res + '</div></li>';
+}
+function warmReady(w){
+  const x = w.ready;
+  // цвет - у метки: .card p перекрашивает сам абзац в серый
+  if (x) return x.ok
+    ? '<p><span class="ok">Руки проснулись:</span> ' + esc(x.title) + ' — ' + pct(x.acc, 2) + ', обычно ' + pct(x.usual, 2) + ' (' + signPct(x.delta) + '). Можно тренироваться.</p>'
+    : '<p><span class="warn">Руки ещё не проснулись:</span> ' + esc(x.title) + ' — ' + pct(x.acc, 2) + ', обычно ' + pct(x.usual, 2) +
+      ', ниже на ' + Math.abs(x.delta * 100).toFixed(1) + '%. Сыграй ещё одну карту.</p>';
+  return w.played ? '<p class="muted">Сравнить пока не с чем: эти карты ты давно не играл в lazer. Разминка берёт знакомые карты, так что скоро будет видно, ' +
+    'в форме ли ты сегодня.</p>' : '';
+}
+function warmCard(w){
+  const i = w.maps.findIndex(m => !m.result), nx = w.maps[i], tr = S.plan.find(p => p.kind === 'training');
+  let h = '<div class="card hero"><h2>Сейчас · разминка <span class="badge acc">' + w.played + ' из ' + w.maps.length + '</span></h2>' +
+    '<p class="muted">Знакомые карты полегче, по нарастающей. В зачёт ничего не идёт — просто разогреть руки перед тренировкой.</p>';
+  if (nx) h += '<div class="now-map">' + (i + 1) + '. ' + mapName(nx) + '</div><p>' + warmInfo(nx) + '</p>' +
+    '<div class="now-code">' + codeChip(nx, true) + '<span class="muted">Нажми — код скопируется. Вставь его в поиск в выборе карты: карта уже в игре, lazer найдёт её по номеру.</span></div>';
+  h += '<ul class="warmlist">' + w.maps.map((m, j) => warmLine(m, j, j === i)).join('') + '</ul>' + warmReady(w) +
+    '<div class="actions"><button class="btn" onclick="warm(\'reroll\', this)" title="Сыгранные останутся, вместо остальных — другие знакомые карты">Другие карты</button>' +
+    '<button class="btn" onclick="warm(\'more\', this)">Ещё одну карту</button>' +
+    '<button class="btn" onclick="warm(\'finish\', this)">Хватит, размялся</button></div>';
+  if (tr && !tr.open) h += '<p class="muted">Пока разминаешься, можно собрать тренировку: новые карты скачаются, пока ты играешь. ' +
+    '<a href="#" onclick="buildTraining(\'' + tr.ladder + '\');return false">Собрать тренировку</a></p>';
+  return h + '</div>';
+}
+function warmTask(w, n){
+  const late = w.session >= 3;
+  return task(n, late ? 'later' : 'due', '<h2>Разминка</h2>',
+    (late ? '<p>Ты уже играешь: карт в этой сессии — ' + w.session + ', руки разогреты. Разминка — если хочется.</p>' : '') +
+    '<p>' + w.n + ' знакомые карты полегче — от ~' + num(w.stars[0], 1) + '★ до ~' + num(w.stars[1], 1) + '★, по нарастающей: сначала самая знакомая, ' +
+    'потом aim, streams / bursts' + (w.ladder ? ' и под конец — к твоей основной лестнице (' + esc(w.ladder) + ')' : ' и ближе к твоему уровню') + '. ' +
+    'Все уже в игре: скачивать нечего, коды — сразу.</p>' +
+    '<p class="muted">В зачёт не идёт. Каждую карту сравню с тем, как ты обычно её играешь, — будет видно, проснулись ли руки.</p>' +
+    '<div class="actions"><button class="btn' + (late ? '' : ' go') + '" onclick="warm(\'start\', this)">Размяться</button></div>');
+}
+function warmDone(w){
+  return task('✓', 'done', '<h2>Разминка сделана</h2>',
+    '<p>Сыграно ' + w.played + ' из ' + w.maps.length + (w.minutes != null ? ' за ' + w.minutes + ' мин' : '') + '. ' +
+    '<a href="#" onclick="WARMOPEN=!WARMOPEN;render();return false">' + (WARMOPEN ? 'Скрыть карты' : 'Карты и результаты') + '</a></p>' +
+    warmReady(w) + (WARMOPEN ? '<ul class="warmlist">' + w.maps.map((m, j) => warmLine(m, j, false)).join('') + '</ul>' : '') +
+    '<div class="actions"><button class="btn small" onclick="warm(\'more\', this)">Ещё одну карту</button>' +
+    '<button class="btn small" onclick="warm(\'start\', this)">Новая разминка</button></div>');
+}
 function testTask(p, n){
   const t = S.tests[S.tests.length - 1];
   let b;
@@ -634,18 +718,26 @@ function sideCards(focus, free){
 function renderToday(){
   const r = S.random, pk = k => S.plan.find(p => p.kind === k), live = rndLive(r);
   const test = pk('test'), tr = pk('training'), ctl = pk('control');
-  // порядок: тест (пока не пройден), контрольный день (если пора), тренировка, случайные карты, контрольный день потом
+  // разминки нет у программы, запущенной до неё (страница читается с диска), - тогда нет и пункта
+  const w = S.warm, wlive = !!(w && w.state === 'active'), wtodo = !!(w && w.state === 'todo'), wlate = wtodo && w.session >= 3;
+  // порядок: разминка, тест (пока не пройден), контрольный день (если пора), тренировка, случайные карты, контрольный день потом;
+  // если уже играешь без разминки - она в конце, по желанию
   const items = [];
+  if (wtodo && !wlate) items.push(n => warmTask(w, n));
   if (test) items.push(n => testTask(test, n));
   if (ctl && ctl.due && ctl.maps) items.push(n => controlTask(ctl, n));
   if (tr) items.push(n => trainingTask(tr, pk('warmup'), n));
   else if (!S.active) items.push(n => task(n, '', '<h2>Лестница</h2>', '<p>Лестницу подберёт вступительный тест. Можно начать и сразу — выбери навык:</p>' + ladderPicker()));
   if (r && !live) items.push(n => randomTask(r, n));
+  if (wlate) items.push(n => warmTask(w, n));
   if (ctl && !(ctl.due && ctl.maps)) items.push(n => controlTask(ctl, n));
-  let main = live ? nowCard(r) : '';
-  // одна главная кнопка на экране: у первого пункта плана, а пока идут случайные карты - ни у одного
-  main += '<div class="sechead"><h2>План на сегодня</h2><span>' + (live ? 'пока идут случайные карты — тренировка и контрольный день подождут' : 'сверху — главное') + '</span></div>' +
-    items.map((f, i) => { const h = f(i + 1); return live || i ? h.split('class="btn go"').join('class="btn"') : h; }).join('');
+  let main = (wlive ? warmCard(w) : '') + (live ? nowCard(r) : '');
+  // одна главная кнопка на экране: у первого пункта плана, а пока идут разминка или случайные карты - ни у одного
+  const busy = wlive || live;
+  main += '<div class="sechead"><h2>План на сегодня</h2><span>' + (wlive ? 'сначала разминка — остальное после неё' :
+      live ? 'пока идут случайные карты — тренировка и контрольный день подождут' : 'сверху — главное') + '</span></div>' +
+    (w && w.state === 'done' ? warmDone(w) : '') +
+    items.map((f, i) => { const h = f(i + 1); return busy || i ? h.split('class="btn go"').join('class="btn"') : h; }).join('');
   if (S.recent.length) main += '<div class="sechead"><h2>Последние карты</h2><span>все попытки — во вкладке «Разборы»</span></div>' +
     '<div class="card">' + playsTable(S.recent.slice(0, 6)) + '</div>';
   $('tab-today').innerHTML = oldCollectionsCard(S.old_collections) + '<div class="cols"><div>' + main + '</div><aside>' + sideCards(pk('focus'), pk('free')) + '</aside></div>';

@@ -840,11 +840,13 @@ def sessions(sc=None):
 
 # ------------------------------------------------------------- профиль ----
 
-def habits(groups):
+def habits(groups, skip=()):
     """Привычки по сессиям: нужна ли разминка и после скольких карт падает точность.
-    Точность каждой карты сравнивается со средней по её же сессии."""
+    Точность каждой карты сравнивается со средней по её же сессии. skip - попытки разминки: карты там полегче
+    и знакомые, с ними «первые карты сессии» выглядели бы лучше, чем есть."""
     rel, first, rest, used = {}, [], [], 0
     for g in groups:
+        g = [s for s in g if s["id"] not in skip]
         if len(g) < 5:
             continue
         used += 1
@@ -905,6 +907,7 @@ def profile_view():
     """Профиль за 30 дней: слабые места (и сдвиг за неделю), тайминг, промахи, привычки, рост по дням."""
     with _lock:
         sc = scores()
+        st = load_state()
         now = time.time()
         recent = [s for s in sc if now - s["ts"] <= 30 * DAY]
         agg = aggregate([analysis(s) for s in recent])
@@ -924,7 +927,8 @@ def profile_view():
                                 "сыгранной карте." % (abs(agg["mean"]), "раньше" if agg["mean"] < 0 else "позже"))
         top = [w["tag"] for w in weak[:3]]
         return dict(plays=len(recent), notes=agg["n"], agg=agg, weak=weak, insights=insights(agg), timing=timing,
-                    habits=habits(sessions(sc)), series=daily_series(sc, top), series_names={t: TAG_INFO[t][0] for t in top},
+                    habits=habits(sessions(sc), warm_ids(st)), series=daily_series(sc, top),
+                    series_names={t: TAG_INFO[t][0] for t in top},
                     types=by_type(recent), labels=labels_view())
 
 
@@ -1184,6 +1188,7 @@ def evaluate(st, sc):
         evaluate_test(test, sc, st)
     evaluate_control(st, sc)
     evaluate_random(st, sc)
+    evaluate_warmup(st, sc)
 
 
 def escape(st, key, choice):
@@ -1260,6 +1265,9 @@ def build_training(key, log, write=True):
         for tr in st["trainings"]:          # и не повторять карты прошлых тренировок этой лестницы
             if tr["ladder"] == key:
                 exclude |= {m["md5"] for m in tr["maps"]}
+        warmed = warm_current(st, sc)       # в этой сессии уже разминаешься - своя разминка тренировке не нужна
+        if warmed:
+            exclude |= {m["md5"] for m in warmed["maps"]}
         save_state(st)
     log("Тренировка: %s, ступень %d — %s. Звёзды %.1f–%.1f (твой уровень ~%.1f★)." % (
         lad["title"], step + 1, step_label(lad, step), stars[0], stars[1], c))
@@ -1272,7 +1280,9 @@ def build_training(key, log, write=True):
     if not maps:
         raise RuntimeError("Для этой ступени не нашлось новых карт — попробуй позже или смени лестницу")
     warm = []
-    if step > 0:
+    if step > 0 and warmed:
+        log("Разминка ступенью ниже не нужна: в этой сессии ты уже разминаешься.")
+    elif step > 0:
         log("Разминка: ступенью ниже — %s." % step_label(lad, step - 1))
         try:
             warm = pick_maps(lad, step - 1, stars, exclude | {m["md5"] for m in maps}, WARMUP_N, log)
@@ -1367,9 +1377,9 @@ def free_play(st, key, days=14):
     in_trainings = {m["md5"] for t in st["trainings"] if t["ladder"] == key for m in t["maps"]}
     r = st.get("random") or {}
     in_trainings |= {h["md5"] for h in r.get("history", []) + ([r["current"]] if r.get("current") else [])}
-    now, out = time.time(), []
+    now, out, warm = time.time(), [], warm_ids(st)
     for s in scores():
-        if now - s["ts"] > days * DAY or s["md5"] in in_trainings or s["rank"] < 0:
+        if now - s["ts"] > days * DAY or s["md5"] in in_trainings or s["rank"] < 0 or s["id"] in warm:
             continue
         ss = skillset(s)
         if ss and any(f["ladder"] == key and f["step"] == step for f in ss["fits"]):
@@ -1760,6 +1770,278 @@ def random_view(st):
                 history=[h for h in r["history"] if h.get("result")][-8:][::-1],
                 played=sum(1 for h in r["history"] if h.get("result")),
                 skills=[dict(key=k, title=v["title"]) for k, v in skills.SKILLS.items()])
+
+
+# ---------------------------------------------------------------- разминка ----
+# Зашёл в игру - «Размяться»: 4 знакомые карты полегче твоего уровня, по нарастающей - сначала самая знакомая,
+# потом aim, streams / bursts и под конец навык основной лестницы. Карты берутся из библиотеки lazer, поэтому
+# скачивать нечего и коды готовы сразу: это карты, которые ты много играл по профилю osu! или уже проходил в lazer.
+# В зачёт разминка не идёт. Сыгранная карта сравнивается с твоими недавними попытками на ней - видно, проснулись
+# ли руки. Разминка действует до перерыва больше SESSION_GAP: после него руки снова холодные.
+
+LIBRARY_JSON = os.path.join(COACH_DIR, "library.json")
+WARM_MAPS = 4
+WARM_RAMP = (1.3, 1.0, 0.65, 0.3)       # на столько звёзд ниже твоего уровня - карты по порядку
+WARM_LEN = (40, 210)                    # длина карты, с: вся разминка - минут на 10-15
+WARM_FIT = 35                           # навык слота в карте - хотя бы на столько (оценка 0..100)
+WARM_ROTATE = 2                         # карты стольких прошлых разминок выпадают реже...
+WARM_REPEAT = 0.15                      # ...во столько раз: разминки разные, но знакомых streams мало
+WARM_USUAL_DAYS = 90                    # «обычно» - по твоим попыткам на этой карте за столько дней
+WARM_READY = -0.01                      # точность ниже обычной не больше чем на 1% - руки разогрелись
+WARM_KEEP = 30
+WARM_AIM = ("jumps", "flow", "precision")
+WARM_TAP = ("streams", "bursts", "speed", "alt", "stamina", "jumpstream", "fingercontrol")
+
+
+def library():
+    """Карты из библиотеки lazer (база только читается). Свой файл - чтобы не столкнуться с подбором карт,
+    который в это же время может писать cache/local.json."""
+    os.makedirs(COACH_DIR, exist_ok=True)
+    trainer.realm_cmd("local", LIBRARY_JSON)
+    return _load(LIBRARY_JSON, []) or []
+
+
+def warm_slots(st):
+    """Слоты разминки по порядку, у каждого - варианты [(ключ, как назвать, навыки)]: берётся первый, на который
+    есть знакомые карты. Последний слот - навык основной лестницы, а нет на него карт - та же группа навыков."""
+    aim, tap = ("aim", "aim", WARM_AIM), ("tap", "streams / bursts", WARM_TAP)
+    last = []
+    lad = LADDERS.get(st.get("active") or "")
+    if lad:
+        keys = tuple(lad["skill"].split(","))
+        last.append(("ladder", "%s — основная лестница" % lad["title"], keys))
+        fam = tap if set(keys) & set(WARM_TAP) else aim if set(keys) & set(WARM_AIM) else None
+        if fam:
+            last.append((fam[0], "%s — к лестнице %s" % (fam[1], lad["title"]), fam[2]))
+    return [[("start", "для начала", ())], [aim], [tap], last]
+
+
+def warm_pool(lib, sc, c, exclude, relaxed=False):
+    """Знакомые карты полегче уровня c, которые уже лежат в игре: по профилю osu! ты играл их хотя бы 3 раза (или
+    дважды прошёл в lazer) и когда-то проходил от 90% - или играл очень много. relaxed - хватит и одного раза."""
+    prof = load_profile()
+    played, pscores = prof.get("played") or {}, prof.get("scores") or {}
+    passes = collections.defaultdict(list)
+    for s in sc:
+        if s["rank"] >= 0 and s.get("md5") and fair(s):
+            passes[s["md5"]].append(s)
+    lo, hi = max(1.0, c - WARM_RAMP[0] - 0.6), c - 0.05
+    out = []
+    for b in lib:
+        md5 = b.get("md5")
+        if b.get("ruleset") != "osu" or not md5 or not b.get("fileHash") or md5 in exclude:
+            continue
+        if not (lo <= (b.get("sr") or 0) <= hi and WARM_LEN[0] <= (b.get("len") or 0) <= WARM_LEN[1]):
+            continue
+        bid = str(b["onlineId"]) if (b.get("onlineId") or 0) > 0 else ""
+        mine = passes.get(md5, [])
+        n = max((played.get(bid) or {}).get("n", 0), len(mine))
+        if n < (1 if relaxed else 3) and len(mine) < (1 if relaxed else 2):
+            continue
+        best = None                     # лучший результат без модов трудности - из профиля osu! и из lazer
+        tries = [(x["acc"], x["ts"], x["mods"]) for x in (pscores.get(bid) or {}).get("list", []) if x["passed"]]
+        for acc, ts, mods in tries + [(x["acc"], x["ts"], x["mods_list"]) for x in mine]:
+            if not diff_key(mods) and (best is None or acc > best["acc"]):
+                best = dict(acc=round(acc, 4), ts=ts)
+        if (best["acc"] if best else 0) < 0.9 and n < 30:
+            continue
+        out.append(dict(md5=md5, fileHash=b["fileHash"], bid=b.get("onlineId") or 0, sid=b.get("setId") or 0,
+                        sr=b["sr"], len=b["len"], title=b.get("title", ""), artist=b.get("artist", ""),
+                        diff=b.get("diff", ""), n=n, best=best))
+    out.sort(key=lambda x: -x["n"])
+    return out
+
+
+def _warm_skills(cands, limit=150):
+    """Оценки навыков у самых знакомых кандидатов: метрики карты - по её файлу в игре (с кэшем)."""
+    out = []
+    for x in cands[:limit]:
+        m = map_metrics(x["fileHash"])
+        if m:
+            ss = skill_scores(m)
+            out.append(dict(x, bpm=round(m["bpm"]), skills={y["key"]: y["score"] for y in ss},
+                            kind=[y["title"] for y in ss if y["main"]][:2]))
+    return out
+
+
+def _set_key(x):
+    return x["sid"] if x["sid"] > 0 else x["md5"]
+
+
+def _warm_choose(cands, target, keys, taken, recent, rnd, first=False):
+    """Карта для слота - случайная, но чем ближе к нужным звёздам, чем больше ты её играл, чем чище проходил
+    и чем ярче в ней навык слота, тем вероятнее: самые знакомые карты выпадают чаще, прошлых разминок - реже."""
+    for width in (0.3, 0.6, 1.0):
+        opts = []
+        for x in cands:
+            if _set_key(x) in taken or abs(x["sr"] - target) > width:
+                continue
+            fit = max(x["skills"].get(k, 0) for k in keys) if keys else 100
+            if fit < WARM_FIT:
+                continue
+            fam = math.log2(1 + x["n"])
+            comfy = min(1.0, max(0.2, (x["best"]["acc"] - 0.85) / 0.1)) if x["best"] else 0.5    # 95% и выше - 1
+            w = (fam * fam if first else fam) * comfy * math.exp(-((x["sr"] - target) / 0.3) ** 2) * (0.5 + fit / 200)
+            opts.append((w * (WARM_REPEAT if x["md5"] in recent else 1.0), x))
+        if opts:
+            r = rnd.random() * sum(w for w, _x in opts)
+            for w, x in opts:
+                r -= w
+                if r <= 0:
+                    break
+            return x
+    return None
+
+
+def _warm_usual(sc, md5, before):
+    """Как ты обычно играешь эту карту: медиана точности прохождений без модов трудности за WARM_USUAL_DAYS."""
+    accs = [s["acc"] for s in sc if s["md5"] == md5 and before - WARM_USUAL_DAYS * DAY <= s["ts"] < before
+            and s["rank"] >= 0 and fair(s) and not diff_key(s["mods_list"])]
+    return dict(acc=round(statistics.median(accs), 4), n=len(accs)) if accs else None
+
+
+def _warm_fill(cands, pos, slot, target, taken, recent, rnd, sc, now):
+    """Карта слота pos: по первому варианту слота, на который нашлись знакомые карты, а нет таких - любая около
+    этих звёзд -> запись разминки."""
+    for key, title, keys in slot + [("near", "ближе к уровню", ())]:
+        x = _warm_choose(cands, target, keys, taken, recent, rnd, first=(pos == 0))
+        if x:
+            taken.add(_set_key(x))
+            return dict(md5=x["md5"], bid=x["bid"], sid=x["sid"], sr=x["sr"], title=x["title"], artist=x["artist"],
+                        diff=x["diff"], len=x["len"], bpm=x["bpm"], kind=x["kind"], plays=x["n"], best=x["best"],
+                        usual=_warm_usual(sc, x["md5"], now), target=round(target, 2), pos=pos, slot=key,
+                        slot_title=title)
+    return None
+
+
+def _warm_alive(w, sc, now):
+    """Разминка ещё про эту сессию: после неё и между попытками не было перерыва больше SESSION_GAP."""
+    last = max([w["created"]] + [r["ts"] for r in w["results"].values()])
+    for s in sc:
+        if s["ts"] > last:
+            if s["ts"] - last > SESSION_GAP:
+                return False
+            last = s["ts"]
+    return now - last <= SESSION_GAP
+
+
+def warm_current(st, sc=None):
+    ws = st.get("warmups") or []
+    return ws[-1] if ws and _warm_alive(ws[-1], scores() if sc is None else sc, time.time()) else None
+
+
+def warm_ids(st):
+    """Попытки, сыгранные в разминке: в выводах о привычках и в свободной игре их не считать."""
+    return {r["id"] for w in st.get("warmups") or [] for r in w["results"].values()}
+
+
+def warmup(action="start"):
+    """Разминка: start - новая, reroll - другие карты вместо ещё не сыгранных, more - ещё одна карта ближе
+    к уровню, finish - закончить. Всё из библиотеки игры, без сети - поэтому сразу, а не задачей."""
+    lib = library() if action != "finish" else []
+    now = time.time()
+    with _lock:
+        st = load_state()
+        sc = scores()
+        ws = st.setdefault("warmups", [])
+        cur = warm_current(st, sc)
+        if action == "finish" or (action == "reroll" and not (cur and cur["status"] == "open")):
+            if cur and cur["status"] == "open":
+                cur.update(status="done", finished=now)
+                save_state(st)
+            return cur
+        if action == "more" and not cur:
+            action = "start"
+        c = comfort_stars(sc)
+        # не брать карты, где важна первая попытка (тест, контрольные, тренировка, случайная карта), а в «другие
+        # карты» и «ещё одну» - и те, что уже в этой разминке
+        hard = reserved_md5(st) | {m["md5"] for t in st["trainings"] if t["status"] == "open"
+                                   for m in t["maps"] + (t.get("warmup") or [])}
+        cr = (st.get("random") or {}).get("current")
+        if cr:
+            hard.add(cr["md5"])
+        if cur and action != "start":
+            hard |= {m["md5"] for m in cur["maps"]}
+        recent = {m["md5"] for w in ws[-WARM_ROTATE:] for m in w["maps"]}
+        cands = warm_pool(lib, sc, c, hard)
+        if len(cands) < WARM_MAPS:
+            cands = warm_pool(lib, sc, c, hard, relaxed=True)
+        cands = _warm_skills(cands)
+        rnd, slots = random.Random(), warm_slots(st)
+        taken = {_set_key(m) for m in cur["maps"]} if cur and action != "start" else set()
+        if action == "start":
+            if cur and cur["status"] == "open":
+                cur.update(status="done", finished=now)
+            maps = [m for m in (_warm_fill(cands, i, slot, c - WARM_RAMP[i], taken, recent, rnd, sc, now)
+                                for i, slot in enumerate(slots)) if m]
+            if not maps:
+                raise RuntimeError("В игре не нашлось знакомых карт полегче твоего уровня. Проверь профиль osu! "
+                                   "(вкладка «Контрольные») — тогда разминка возьмёт карты, которые ты много играл")
+            cur = dict(id="w%d" % int(now), created=now, comfort=c, status="open", maps=maps, results={})
+            ws.append(cur)
+            del ws[:-WARM_KEEP]
+        elif action == "reroll":        # сыгранные остаются, вместо остальных - другие карты тех же слотов
+            for i, m in enumerate(cur["maps"]):
+                if m["md5"] not in cur["results"]:
+                    pos = min(m.get("pos", len(slots) - 1), len(slots) - 1)
+                    new = _warm_fill(cands, pos, slots[pos], m.get("target", c - WARM_RAMP[pos]), taken, recent, rnd, sc, now)
+                    if new:
+                        cur["maps"][i] = dict(new, extra=m.get("extra", False))
+        else:                           # ещё одна: около уровня, навык основной лестницы
+            m = _warm_fill(cands, len(slots) - 1, slots[-1], c - WARM_RAMP[-1], taken, recent, rnd, sc, now)
+            if not m:
+                raise RuntimeError("Больше знакомых карт около твоего уровня в игре нет")
+            cur["maps"].append(dict(m, extra=True))
+            cur.update(status="open", finished=None)
+        save_state(st)
+        return cur
+
+
+def evaluate_warmup(st, sc):
+    """Сыгранные карты идущей разминки: первая попытка каждой после её начала - до первого перерыва."""
+    for w in st.get("warmups") or []:
+        if w["status"] != "open":
+            continue
+        md5s, last = {m["md5"] for m in w["maps"]}, w["created"]
+        for s in sc:
+            if s["ts"] < w["created"] - 5:
+                continue
+            if s["ts"] - last > SESSION_GAP:
+                break
+            last = max(last, s["ts"])
+            if s["md5"] in md5s and s["md5"] not in w["results"] and fair(s):
+                a = analysis(s)
+                w["results"][s["md5"]] = dict(id=s["id"], acc=round(s["acc"], 4), misses=s["misses"], rank=s["rank"],
+                                              ts=s["ts"], mods=s["mods_list"],
+                                              ur=a["summary"]["ur"] if a and not a.get("error") else None)
+        if len(w["results"]) >= len(w["maps"]):
+            w.update(status="done", finished=max(r["ts"] for r in w["results"].values()))
+
+
+def warm_view(st, sc):
+    """Разминка для «Сегодня»: todo - предложить, active - идёт, done - уже была в этой сессии."""
+    now = time.time()
+    c = comfort_stars(sc)
+    lad = LADDERS.get(st.get("active") or "")
+    g = sessions(sc)[-1] if sc else []
+    out = dict(n=WARM_MAPS, stars=[round(max(1.0, c - WARM_RAMP[0]), 1), round(c - WARM_RAMP[-1], 1)],
+               ladder=lad["title"] if lad else None, session=len(g) if g and now - g[-1]["ts"] <= SESSION_GAP else 0)
+    w = warm_current(st, sc)
+    if not w:
+        return dict(out, state="todo")
+    maps = []
+    for m in w["maps"]:
+        r = w["results"].get(m["md5"])
+        if r:                           # «обычно» - только для попытки без модов трудности
+            r = dict(r, delta=round(r["acc"] - m["usual"]["acc"], 4) if m.get("usual") and not diff_key(r["mods"]) else None)
+        maps.append(dict(m, result=r))
+    done = [m for m in maps if m["result"]]
+    last = max((m for m in done if m["result"]["delta"] is not None), key=lambda m: m["result"]["ts"], default=None)
+    return dict(out, state="active" if w["status"] == "open" else "done", id=w["id"], created=w["created"], maps=maps,
+                played=len(done), minutes=max(0, round((max(m["result"]["ts"] for m in done) - w["created"]) / 60)) if done else None,
+                ready=last and dict(title=last["title"], acc=last["result"]["acc"], usual=last["usual"]["acc"],
+                                    n=last["usual"]["n"], delta=last["result"]["delta"],
+                                    ok=last["result"]["delta"] >= WARM_READY))
 
 
 # ------------------------------------------------------ вступительный тест ----
@@ -2460,7 +2742,7 @@ def plan(st, sc):
     if f:
         items.append(dict(kind="focus", active=key, is_active=(f["ladder"] == key),
                           ladder_title=LADDERS[f["ladder"]]["title"], **f))
-    items.append(dict(kind="free", habits=habits(sessions(sc))["lines"]))
+    items.append(dict(kind="free", habits=habits(sessions(sc), warm_ids(st))["lines"]))
     cv = control_view(st, sc)
     items.append(dict(kind="control", due=cv["due"], days_left=cv["days_left"], maps=len(cv["maps"])))
     return items
@@ -2487,7 +2769,7 @@ def state_view():
             ladders=[ladder_view(st, k) for k in st["ladders"]],
             ladder_defs=[dict(key=k, title=v["title"], mod=v.get("mod"), unit=v["unit"]) for k, v in LADDERS.items()],
             tests=st["tests"], control=control_view(st, sc), sessions=session_list(), recent=recent,
-            random=random_view(st), ask=ask_view(sc), need=NEED, of=OF, rule=verdict.rule_points(),
+            random=random_view(st), warm=warm_view(st, sc), ask=ask_view(sc), need=NEED, of=OF, rule=verdict.rule_points(),
             tag_names={k: v[0] for k, v in TAG_INFO.items()}, old_collections=old_collections(st),
             page=page_version())
 
