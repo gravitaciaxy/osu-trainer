@@ -1994,6 +1994,8 @@ FARM_MIN, FARM_SHARE = 10.0, 0.4        # фарм: вес от 10 и доля �
 FARM_SURE = 40.0                        # ...или вес от 40 - такие карты фармят все
 ASSIST_MODS = {"RX", "AP", "AT", "CN", "MG", "TP"}      # игра с помощью - не показатель
 SR_MODS = DIFF_MODS | {"FL"}    # с этими модами звёзды другие
+BEST_MIN_ACC = 0.9              # ниже - не красивый скор, а «прошёл как смог»
+BEST_MAX_SR = 10.0              # выше - шуточные карты (у loved бывает и 176★)
 
 
 def diff_key(mods):
@@ -2019,8 +2021,12 @@ def beauty(sr, s):
 
 
 def _sr_mods(bid, s):
-    """(ключ кэша, моды для расчёта звёзд) или (None, None), если моды звёзд не меняют."""
+    """(ключ кэша, моды для расчёта звёзд) или (None, None), если моды звёзд не меняют. Настройки модов
+    (скорость DT, AR у DA) API osu! молча не учитывает - любой DT считает как 1.5x (проверено 2026-09-26),
+    поэтому для таких скоров ключа тоже нет: звёзды только прикидываются по настоящей скорости."""
     mods = [m for m in s["mods"] if m["acronym"] in SR_MODS]
+    if any(m.get("settings") for m in mods):
+        return None, mods
     return ("%s %s" % (bid, json.dumps(mods, sort_keys=True)), mods) if mods else (None, None)
 
 
@@ -2032,12 +2038,14 @@ def _profile_best(p, exact):
         if not m:
             continue
         for s in x["list"]:
-            if not s["passed"] or ASSIST_MODS & {a["acronym"] for a in s["mods"]}:
+            if not s["passed"] or s["acc"] < BEST_MIN_ACC or ASSIST_MODS & {a["acronym"] for a in s["mods"]}:
                 continue
             key, mods = _sr_mods(bid, s)
-            sr = m["sr"] if not key else exact.get(key)
+            sr = exact.get(key) if key else None
             if sr is None:
-                sr = _guess_sr(m["sr"], mods)
+                sr = _guess_sr(m["sr"], mods or [])
+            if sr > BEST_MAX_SR:
+                continue
             b = beauty(sr, s)
             if bid not in best or b > best[bid][0]:
                 best[bid] = (b, sr, s)
