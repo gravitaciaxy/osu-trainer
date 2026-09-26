@@ -387,7 +387,7 @@ def coach_post(path, body):
             coach.keep_old_collections()
             return {"ok": True}
         return {"id": coach_job(coach.remove_old_collections).id}
-    if path == "/api/coach/random":
+    if path in ("/api/coach/random", "/api/coach/random/mode"):
         action = str(body.get("action") or "next")
         if action == "stop":
             coach.random_stop()
@@ -395,7 +395,11 @@ def coach_post(path, body):
         skill = str(body.get("skill") or "") or None
         if skill and skill not in ("any", "ladders", "farm") and skill not in coach.skills.SKILLS:
             raise RuntimeError("Нет такого навыка")
-        return {"id": coach_job(lambda log: coach.random_next(log, skill)).id}
+        popular = body["popular"] is True if "popular" in body else None
+        if path.endswith("/mode"):          # только настройка: следующую карту по ней приготовит фон
+            coach.random_mode(skill, popular)
+            return {"ok": True}
+        return {"id": coach_job(lambda log: coach.random_next(log, skill, popular)).id}
     if path == "/api/coach/apikeys":
         coach.save_keys(body.get("client_id"), body.get("client_secret"), body.get("user"))
         return {"ok": True}

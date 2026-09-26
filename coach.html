@@ -454,14 +454,21 @@ function creditBadges(ks){
 /* случайные карты: режим идёт - это карточка «Сейчас» наверху; иначе - пункт плана */
 const rndLive = r => !!(r && (r.auto || r.preparing || r.error || (r.current && !r.current.result)));
 function rndSelect(r){
-  return '<select id="rndskill" aria-label="Навык случайной карты"><option value="any"' + (r.skill === 'any' ? ' selected' : '') + '>любой навык</option>' +
+  return '<select id="rndskill" aria-label="Навык случайной карты" onchange="rndMode()"><option value="any"' + (r.skill === 'any' ? ' selected' : '') + '>любой навык</option>' +
     '<option value="ladders"' + (r.skill === 'ladders' ? ' selected' : '') + '>навык моих лестниц</option>' +
     '<option value="farm"' + (r.skill === 'farm' ? ' selected' : '') + (r.farm_ready ? '' : ' disabled') + '>фарм-карты' +
       (r.farm_ready ? '' : ' (сначала отметь фарм)') + '</option>' +
-    r.skills.map(s => '<option value="' + s.key + '"' + (r.skill === s.key ? ' selected' : '') + '>' + esc(s.title) + '</option>').join('') + '</select>';
+    r.skills.map(s => '<option value="' + s.key + '"' + (r.skill === s.key ? ' selected' : '') + '>' + esc(s.title) + '</option>').join('') + '</select>' +
+    '<label title="Самые популярные у игроков песни навыка — те, что чаще всего лежат в подборках osu!Collector с этим навыком в названии. Для фарм-карт — самые играемые.">' +
+      '<input type="checkbox" id="rndpop"' + (r.popular ? ' checked' : '') + ' onchange="rndMode()"> сначала популярные</label>';
 }
 const rndGo = (r, label, primary) => '<button class="btn' + (primary ? ' go' : '') + '"' + (r.preparing ? ' disabled' : '') +
-  ' onclick="startJob(\'/api/coach/random\', {action:\'next\', skill:$(\'rndskill\').value}, \'Ищу случайную карту\')">' + label + '</button>';
+  ' onclick="startJob(\'/api/coach/random\', {action:\'next\', skill:$(\'rndskill\').value, popular:$(\'rndpop\').checked}, \'Ищу случайную карту\')">' + label + '</button>';
+/* навык и галочку следующей карты запоминает тренер: пока идут случайные карты, следующую готовит фон */
+async function rndMode(){
+  try { await api('/api/coach/random/mode', {skill:$('rndskill').value, popular:$('rndpop').checked}); refresh(); }
+  catch(e){ toast(e.message, 'err'); }
+}
 function resultLine(x, c){
   return '<p>Сыграно: <b>' + mapName(c) + '</b> ' + mods(x.mods) + ' — <b>' + pct(x.acc, 2) + '</b> · ' + x.misses + ' пр.' +
     (x.weak && x.weak.length ? ' · слабее всего: ' + x.weak.map(esc).join(', ') : '') +
@@ -484,7 +491,8 @@ function nowCard(r){
   else if (r.error) h += '<div class="errbox">' + esc(r.error) + '. Режим остановлен — нажми «Дай карту», чтобы попробовать снова.</div>';
   if (fresh){
     h += '<div class="now-map">' + mapName(c) + '</div><p>' + num(c.sr, 2) + '★ · <span class="badge acc">' + esc(c.skill_title) + '</span> ' +
-      (c.farm ? '<span class="badge warn">фарм</span> ' : '') + '<a href="https://osu.ppy.sh/b/' + (+c.bid) + '" target="_blank" rel="noopener">страница карты ↗</a></p>' +
+      (c.farm ? '<span class="badge warn">фарм</span> ' : '') + (c.popular ? '<span class="badge mod">популярная</span> ' : '') +
+      '<a href="https://osu.ppy.sh/b/' + (+c.bid) + '" target="_blank" rel="noopener">страница карты ↗</a></p>' +
       '<div class="now-code">' + codeChip(c, true) + '<span class="muted">Нажми — код скопируется. Вставь его в поиск в выборе карты: lazer найдёт её по номеру. ' +
       'Если поиск пока пустой — lazer ещё импортирует карту, подожди пару секунд.</span></div>' +
       (c.ladder ? '<p>Ступень ' + (c.ladder_step + 1) + ' твоей лестницы <b>' + esc(c.ladder_title) + '</b> (' + esc(c.ladder_label) + '): возьмёшь порог — пойдёт в зачёт.</p>' : '') +
@@ -500,7 +508,8 @@ function randomTask(r, n){
   const c = r.current;
   return task(n, '', '<h2>Случайные карты</h2>',
     '<p>Дам одну новую карту случайного навыка около твоего уровня (~' + num(S.comfort, 2) + '★), которую ты не играл неделю. ' +
-    'Сыграл — сразу следующая, и так сколько хочешь. Похожих на твои фарм-карты не будет — разве что выберешь «фарм-карты».</p>' +
+    'Сыграл — сразу следующая, и так сколько хочешь. Похожих на твои фарм-карты не будет — разве что выберешь «фарм-карты». ' +
+    'С галочкой «сначала популярные» — самые популярные у игроков песни навыка.</p>' +
     '<p class="muted">Если на навык есть твоя лестница, карта будет с твоей ступени. ' +
     'Карты идут в зачёт лестниц, как в тренировке: порог взят на ' + S.need + ' из последних ' + S.of + ' карт ступени — ступень сдана. ' +
     'Моды учитываются: с DT, HR или HD карта считается такой, какой ты её сыграл.</p>' +

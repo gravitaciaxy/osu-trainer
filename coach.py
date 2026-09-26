@@ -1328,6 +1328,7 @@ def free_play(st, key, days=14):
 # следующую. Её находят по коду в поиске выбора карты.
 
 PREPARE_TIMEOUT = 300
+POPULAR_TOP = 5         # «сначала популярные»: первой идёт случайная из стольких самых популярных песен
 
 
 def random_state(st):
@@ -1336,7 +1337,16 @@ def random_state(st):
     r.setdefault("history", [])
     r.setdefault("auto", False)
     r.setdefault("skill", "any")
+    r.setdefault("popular", False)
     return r
+
+
+def popular_first(items):
+    """Уже по убыванию популярности: первые POPULAR_TOP - в случайном порядке, чтобы карта оставалась
+    случайной, но из самых популярных; дальше - по порядку."""
+    head = items[:POPULAR_TOP]
+    random.shuffle(head)
+    return head + items[POPULAR_TOP:]
 
 
 def on_step(target, m):
@@ -1350,10 +1360,10 @@ def farm_skills():
     return sorted(cnt, key=lambda k: -cnt[k] * random.random()) or random.sample(list(skills.SKILLS), len(skills.SKILLS))
 
 
-def farm_pick(exclude, log):
+def farm_pick(exclude, log, popular=False):
     """Случайная новая фарм-карта около твоего уровня: сначала соседи твоих фарм-карт по подборкам игроков
     (кто держит их в коллекциях, держит там и похожие), потом карты тех же навыков; берётся первая, похожая
-    на отмеченные фарм-карты."""
+    на отмеченные фарм-карты. С popular - сначала самые играемые из них."""
     labs = [lab for lab in load_labels()["labels"].values() if lab.get("farm")]
     if not labs:
         raise RuntimeError("Сначала отметь хотя бы одну фарм-карту — в окошке после карты")
@@ -1385,12 +1395,17 @@ def farm_pick(exclude, log):
         random.shuffle(rest)
         if near:
             log("  соседей твоих фарм-карт по подборкам игроков: %d" % len(near))
+        order = near + rest
+        if popular:         # игр на osu! - свежие, с зеркала
+            order = popular_first(sorted(order, key=lambda x: -x.get("playcount", 0)))
         scorer = trainer.make_scorer([cfg], None, a)
         best = None
-        for cand in (near + rest)[:30]:
+        for cand in order[:30]:
             res = trainer.score_candidate(cand, scorer, a)
             if not res:
                 continue
+            if popular:
+                res.update(popular=True, why="%s | игр на osu!: %s" % (res["why"], trainer.number(res["playcount"])))
             fs, like = farm_score(res["metrics"])
             if fs >= 0.5:
                 log("  похожа на твою фарм-карту «%s»" % like)
@@ -1404,19 +1419,67 @@ def farm_pick(exclude, log):
     raise RuntimeError("Похожих на твои фарм-карты не нашлось — отметь ещё пару фарм-карт или попробуй позже")
 
 
-def random_pick(skill, exclude, log, steps=None):
+def popular_pick(key, index, stars, c, exclude, log, target=None):
+    """Новая карта из самых популярных песен навыка - тех, что игроки чаще всего кладут в подборки
+    osu!Collector с навыком в названии (как вкладка «Популярные» подбора карт). Навык проверяется разбором,
+    мнение игроков его подтягивает («мягкое ИЛИ» подбора). Ступень лестницы здесь не ищется: популярность
+    важнее, а карта ступени и так пойдёт в зачёт. -> (навык, карта, на ступени ли) или None."""
+    cfg = skills.SKILLS[key]
+    log("Популярные карты навыка %s, звёзды %.1f–%.1f (твой уровень ~%.1f★)" % (cfg["title"], stars[0], stars[1], c))
+    a = trainer.coerce_params(dict(skill=key, stars="%.2f-%.2f" % stars, count=20, crowd_weight=0.5,
+                                   status="ranked,loved", lang="ru"))
+    a.adjust = personal_adjust
+    trainer.prepare(a)
+    statuses = {"ranked", "loved"}
+    ok = trainer.map_filter(a, stars, statuses, set())
+    rough = trainer.map_filter(a, (stars[0] - trainer.SR_DRIFT, stars[1] + trainer.SR_DRIFT), statuses, set())
+    try:
+        songs = trainer.popular_crowd(a, [key], [cfg], rough, lambda x: ok(x) and x["md5"] not in exclude, log)
+    except (OSError, RuntimeError) as e:
+        log("  %s" % e)
+        return None
+    crowd = trainer.crowd_booster(index, [key], [cfg], None, "ru")
+
+    def boost(x):           # прибавка - по самой сложности, а в пояснении - сколько подборок у всей песни
+        got = crowd(x)
+        return got and (got[0], x.get("why") or got[1], got[2])
+    scorer = trainer.make_scorer([cfg], None, a, boost)
+    for maps in popular_first(songs)[:12]:
+        for cand in maps[:2]:           # сложности песни - от самой собираемой игроками
+            res = trainer.score_candidate(cand, scorer, a)
+            if not res or res["score"] < cfg["min_score"]:
+                continue
+            fs, like = farm_score(res["metrics"])
+            if fs >= 0.5:
+                log("  %s — похожа на твою фарм-карту «%s», пропускаю" % (res["title"], like))
+                continue
+            res["popular"] = True
+            return key, res, bool(target and on_step(target, res["metrics"]))
+    log("  среди популярных песен навыка новой подходящей карты нет")
+    return None
+
+
+def random_pick(skill, exclude, log, steps=None, popular=False):
     """Случайная новая карта навыка (или случайного навыка) около твоего уровня: кандидаты из подборок
     игроков и поиска, проверяются разбором по одному, пока не найдётся карта с явным навыком. Если на навык
     есть твоя лестница, лучше карта её ступени - тогда она пойдёт в зачёт. Похожие на твои фарм-карты -
-    только в режиме «farm», и тогда только они. -> (навык, карта, на ступени ли)."""
+    только в режиме «farm», и тогда только они. С popular сначала пробуются самые популярные песни навыков
+    (popular_pick), обычная случайная карта - только если среди них ничего не подошло.
+    -> (навык, карта, на ступени ли)."""
     if skill == "farm":
-        return farm_pick(exclude, log)
+        return farm_pick(exclude, log, popular)
     steps = steps or {}
     c = comfort_stars()
     stars = (max(1.0, round(c - 0.5, 2)), round(c + 0.5, 2))
     keys = [skill] if skill in skills.SKILLS else list(steps) if skill == "ladders" and steps else list(skills.SKILLS)
     random.shuffle(keys)
     index = collector.load()
+    if popular and index:
+        for key in keys[:4]:
+            got = popular_pick(key, index, stars, c, exclude, log, steps.get(key))
+            if got:
+                return got
+        log("Среди популярных ничего не подошло — беру просто случайную карту навыка")
     for key in keys[:4]:
         cfg = skills.SKILLS[key]
         log("Навык: %s, звёзды %.1f–%.1f (твой уровень ~%.1f★)" % (cfg["title"], stars[0], stars[1], c))
@@ -1474,15 +1537,29 @@ def _deliver(m, log):
     return True
 
 
-def random_next(log, skill=None):
+def random_mode(skill=None, popular=None):
+    """Навык и «сначала популярные» для следующих карт: их готовит фон, поэтому настройка хранится у тренера."""
     with _lock:
         st = load_state()
         r = random_state(st)
         if skill:
             r["skill"] = skill
+        if popular is not None:
+            r["popular"] = bool(popular)
+        save_state(st)
+
+
+def random_next(log, skill=None, popular=None):
+    with _lock:
+        st = load_state()
+        r = random_state(st)
+        if skill:
+            r["skill"] = skill
+        if popular is not None:
+            r["popular"] = bool(popular)
         r["auto"] = True
         r["preparing"] = time.time()
-        skill = r["skill"]
+        skill, popular = r["skill"], r["popular"]
         exclude = played_recently(scores()) | reserved_md5(st) | {h["md5"] for h in r["history"]}
         if r["current"]:
             exclude.add(r["current"]["md5"])
@@ -1493,7 +1570,7 @@ def random_next(log, skill=None):
     try:
         for _attempt in range(3):
             try:
-                key, m, stepped = random_pick(skill, exclude, log, steps)
+                key, m, stepped = random_pick(skill, exclude, log, steps, popular)
             except RuntimeError as e:
                 error = str(e)
                 raise
@@ -1505,6 +1582,8 @@ def random_next(log, skill=None):
                             ladder_label=step_label(*steps[key]))
             if skill == "farm":
                 pick["farm"] = True
+            if m.get("popular"):
+                pick["popular"] = True
             if _deliver(pick, log):
                 break
             log("  не скачалась — ищу другую")
@@ -1528,7 +1607,8 @@ def random_next(log, skill=None):
             else:           # не вышло - режим встаёт, иначе фон пробовал бы снова каждые 15 секунд
                 r["auto"], r["error"] = False, error
             save_state(st)
-    log("Готово: %s — %s [%s], %.2f★ · %s." % (pick["artist"], pick["title"], pick["diff"], pick["sr"], pick["skill_title"]))
+    log("Готово: %s — %s [%s], %.2f★ · %s%s." % (pick["artist"], pick["title"], pick["diff"], pick["sr"], pick["skill_title"],
+                                                 " · популярная" if pick.get("popular") else ""))
     if pick.get("ladder"):
         log("Ступень %d лестницы %s (%s): возьмёшь порог — пойдёт в зачёт." % (
             pick["ladder_step"] + 1, pick["ladder_title"], pick["ladder_label"]))
@@ -1618,8 +1698,8 @@ def random_pending():
 def random_view(st):
     r = random_state(st)
     busy = bool(r.get("preparing") and time.time() - r["preparing"] < PREPARE_TIMEOUT)
-    return dict(current=r["current"], auto=r["auto"], skill=r["skill"], preparing=busy, error=r.get("error"),
-                farm_ready=has_farm(),
+    return dict(current=r["current"], auto=r["auto"], skill=r["skill"], popular=r["popular"], preparing=busy,
+                error=r.get("error"), farm_ready=has_farm(),
                 history=[h for h in r["history"] if h.get("result")][-8:][::-1],
                 played=sum(1 for h in r["history"] if h.get("result")),
                 skills=[dict(key=k, title=v["title"]) for k, v in skills.SKILLS.items()])
