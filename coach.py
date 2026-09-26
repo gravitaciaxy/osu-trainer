@@ -1278,14 +1278,13 @@ def build_training(key, log, write=True):
             warm = pick_maps(lad, step - 1, stars, exclude | {m["md5"] for m in maps}, WARMUP_N, log)
         except RuntimeError:
             warm = []
+    # тренировка - на страницу сразу после подбора, с кодами карт: играть первую можно, пока остальные качаются
     with _lock:
         st = load_state()
         tr = dict(id="t%d" % int(time.time()), ladder=key, step=step, created=time.time(), maps=maps, warmup=warm,
                   status="open", results={}, soft=soft_level(st, key))
-    if write:
-        to_library(warm + maps, log)
-    with _lock:
-        st = load_state()
+        if write:
+            tr["loading"] = time.time()
         evaluate(st, scores())
         for t in st["trainings"]:           # прошлая открытая тренировка этой лестницы закрывается:
             if t["ladder"] == key and t["status"] == "open":    # почти не сыгранная - без штрафа
@@ -1301,8 +1300,26 @@ def build_training(key, log, write=True):
         log("Разминка, коды для поиска в выборе карты: %s" % codes(warm))
     log("Карты ступени: %s" % codes(maps))
     log("Зачёт ступени: %d карты из %d. %s" % (min(NEED, len(maps)), len(maps), verdict.rules(tr["soft"])))
+    if write:
+        log("")
+        log("Коды уже на странице. Скачиваю в игру карты, которых в ней нет:")
+        _download(tr["id"], "trainings", warm + maps, log)
     log("Разбор каждой сыгранной карты — во вкладке «Лестницы» и в разборе карты.")
     return tr
+
+
+def _download(tid, where, maps, log):
+    """Карты - в игру, пока тренировка или тест уже висят на странице с кодами; потом снять отметку «качаются»
+    (и если скачать не вышло - коды остаются, а ошибку покажет задача)."""
+    try:
+        to_library(maps, log)
+    finally:
+        with _lock:
+            st = load_state()
+            for t in st[where]:
+                if t["id"] == tid:
+                    t.pop("loading", None)
+            save_state(st)
 
 
 def finish_training(tid):
@@ -1795,16 +1812,21 @@ def build_test(log, write=True):
     pools._save_bm(cache)
     if not maps:
         raise RuntimeError("Не удалось получить карты пула — зеркало не отвечает, попробуй позже")
+    test = dict(id="x%d" % int(time.time()), created=time.time(), tournament=key[0], edition=key[1], round=key[2],
+                maps=maps, status="open", results={})
     if write:
-        to_library(maps, log)
-    with _lock:
+        test["loading"] = time.time()
+    with _lock:                             # тест - на страницу сразу, с кодами карт; карты качаются потом
         st = load_state()
-        st["tests"].append(dict(id="x%d" % int(time.time()), created=time.time(), tournament=key[0],
-                                edition=key[1], round=key[2], maps=maps, status="open", results={}))
+        st["tests"].append(test)
         save_state(st)
     log("")
-    log("Коды карт для поиска в выборе карты — на вкладке «Тест».")
+    log("Коды карт для поиска в выборе карты — во вкладке «Лестницы», раздел «Тест».")
     log("Играй карты с модом своего слота: HD1 — с HD, HR1 — с HR, DT1 — с DT; NM и TB — без модов, FM — как хочешь.")
+    if write:
+        log("")
+        log("Скачиваю в игру карты, которых в ней нет:")
+        _download(test["id"], "tests", maps, log)
     return maps
 
 

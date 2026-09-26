@@ -213,6 +213,8 @@
   .verdict.fail{border-left-color:var(--err)}
   .verdict .vhead{line-height:1.6}
   .verdict ul.plain{margin:6px 0 2px}
+  /* идущая тренировка внутри лестницы: что играть - сразу на виду */
+  .opentr{border:1px solid #ff66aa66;border-radius:10px;padding:2px 12px 10px;margin:10px 0;background:#ff66aa0d}
   details.more{margin-top:12px}
   details.more>summary{cursor:pointer;color:var(--dim);font-size:12.5px;width:max-content}
   details.more>summary:hover{color:var(--text)}
@@ -339,11 +341,12 @@ function stalePage(){
   location.reload();
   return true;
 }
-async function refresh(force){
+async function refresh(force, redraw){
   try {
     if (force) await api('/api/coach/refresh', {});
     S = await api('/api/coach/state');
     if (stalePage()) return;
+    if (redraw) LASTUPD = undefined;
     $('error').innerHTML = S.error ? '<div class="errbox">' + esc(S.error) + '</div>' : '';
     $('info').innerHTML = 'уровень <b>~' + num(S.comfort, 2) + '★</b> · попыток: ' + S.plays + (S.updated ? ' · обновлено ' + ago(S.updated) : '');
     // следующую случайную карту готовит фон без новых попыток - её тоже надо показать сразу
@@ -372,9 +375,12 @@ async function startJob(path, body, title){
     clearInterval(JOBCLOCK); JOBCLOCK = setInterval(jobTick, 1000); jobTick();
   } catch(e){ toast(e.message, 'err'); }
 }
-/* полоса: этап - последняя строка журнала, счётчик «…3/8» в строке с отступом заполняет её */
+/* полоса: этап - последняя строка журнала, счётчик «…3/8» в строке с отступом заполняет её.
+   Коды карт тренировки или теста готовы раньше, чем карты скачаются, - тогда страница сразу перерисовывается */
+let JOBCODES = false;
 function jobLines(lines){
   lines.forEach(line => {
+    if (/^(Карты ступени|Коды карт для поиска)/.test(line)) JOBCODES = true;
     if (!line.trim()) return;
     const m = line.match(/(\d+)\s*\/\s*(\d+)/);
     if (/^\S/.test(line)) JOBFRAC = null;
@@ -396,6 +402,7 @@ async function pollJob(){
   catch(e){ if (e.status === 404 || ++JOBFAILS > 30) jobEnd({state:'error', error:'задача потерялась — программу перезапускали, запусти ещё раз'}); return; }
   if (d.lines && d.lines.length){ JOBSEEN = d.total; const l = $('joblog');
     l.textContent += (l.textContent ? '\n' : '') + d.lines.join('\n'); l.scrollTop = l.scrollHeight; jobLines(d.lines); }
+  if (JOBCODES){ JOBCODES = false; refresh(false, true); }
   jobTick();
   if (d.state === 'queued' || d.state === 'running') return;
   jobEnd(d);
@@ -447,8 +454,29 @@ function escapeBox(key, soft, softMax){
       'Мягче порог (норма точности −2%, каждый допуск +1' + (soft ? ', уже смягчён ×' + soft : '') + ')</button>') +
     '<button class="btn small" onclick="post(\'/api/coach/ladder\', {key:\'' + key + '\', escape:\'keep\'})">Продолжаю как есть</button></div></div>';
 }
-function buildTraining(key){ startJob('/api/coach/training', {ladder:key}, 'Собираю разминку и тренировку'); }
+/* новая тренировка закрывает идущую - спросить, если в ней ещё есть что играть */
+function buildTraining(key){
+  const l = S && S.ladders.find(x => x.key === key), o = l && l.open;
+  if (o && !confirm('Собрать новую тренировку? Идущая закроется: в ней сыграно ' + Object.keys(o.results || {}).length + ' из ' + o.maps.length + ' карт.')) return;
+  if (LADOPEN) LADOPEN.add(key);              // в «Лестницах» её карты сразу видны раскрытыми
+  startJob('/api/coach/training', {ladder:key}, 'Собираю тренировку');
+}
 function finishTraining(id){ if (confirm('Закончить тренировку? Несыгранные карты не будут засчитаны.')) post('/api/coach/training/finish', {id}); }
+// карты качаются в игру (задача ещё идёт) - коды уже есть, но поиск в выборе карты найдёт карту, только когда она скачается
+const loadingNow = x => !!(x && x.loading && Date.now() / 1000 - x.loading < 900);
+const codesHint = x => loadingNow(x)
+  ? '<p class="warn">Карты скачиваются в игру. Коды уже можно копировать: как только карта скачается, поиск в выборе карты её найдёт.</p>'
+  : '<p class="muted">Нажми на код карты, чтобы скопировать, и вставь его в поиск в выборе карты — lazer найдёт её по номеру. ' +
+    'Если поиск пустой, lazer ещё импортирует карту: подожди пару секунд.</p>';
+/* идущая тренировка: что играть (коды) и как идёт зачёт - и на «Сегодня», и в «Лестницах» */
+function trainingBody(tr){
+  const res = tr.results || {}, ok = Object.values(res).filter(r => r.ok).length, played = Object.keys(res).length;
+  let b = '<p>Сыграно ' + played + ' из ' + tr.maps.length + ', засчитано <b class="' + (ok >= S.need ? 'ok' : '') + '">' + ok + '</b> из ' + Math.min(S.need, tr.maps.length) + ' нужных. ' +
+    '<span class="muted">Нажми на сыгранную карту — там разбор, почему засчитана или нет.</span></p>' + codesHint(tr);
+  if (tr.warmup && tr.warmup.length) b += '<h3>Разминка — ступенью ниже, в зачёт не идёт</h3><ul class="plain">' +
+    tr.warmup.map(m => '<li>' + esc(m.artist) + ' — ' + esc(m.title) + (m.diff ? ' <span class="muted">[' + esc(m.diff) + ']</span>' : '') + ' ' + codeChip(m) + '</li>').join('') + '</ul>';
+  return b + '<h3>Карты ступени</h3>' + mapsTable(tr.maps, res, {value:'параметр'});
+}
 function trainingTask(p, wu, n){
   const tr = p.open;
   const head = '<h2>Тренировка: ' + esc(p.title) + ' <span class="badge acc">ступень ' + (p.step + 1) + '</span></h2>' +
@@ -456,20 +484,14 @@ function trainingTask(p, wu, n){
     ' <a href="#" onclick="switchTab(\'ladders\');return false">Как засчитывается карта</a></p>';
   let b = p.escape ? escapeBox(p.ladder, p.soft) : '';
   if (tr){
-    const res = tr.results || {}, ok = Object.values(res).filter(r => r.ok).length, played = Object.keys(res).length;
-    b += '<p>Сыграно ' + played + ' из ' + tr.maps.length + ', засчитано <b class="' + (ok >= S.need ? 'ok' : '') + '">' + ok + '</b> из ' + Math.min(S.need, tr.maps.length) + ' нужных. ' +
-      '<span class="muted">Нажми на сыгранную карту — там разбор, почему засчитана или нет.</span></p>' +
-      '<p class="muted">Карты уже в библиотеке игры. Нажми на код карты, чтобы скопировать, и вставь его в поиск в выборе карты — lazer найдёт её по номеру. ' +
-      'Если поиск пустой, lazer ещё импортирует карту: подожди пару секунд.</p>';
-    if (tr.warmup && tr.warmup.length) b += '<h3>Разминка — ступенью ниже, в зачёт не идёт</h3><ul class="plain">' +
-      tr.warmup.map(m => '<li>' + esc(m.artist) + ' — ' + esc(m.title) + (m.diff ? ' <span class="muted">[' + esc(m.diff) + ']</span>' : '') + ' ' + codeChip(m) + '</li>').join('') + '</ul>';
-    b += '<h3>Карты ступени</h3>' + mapsTable(tr.maps, res, {value:'параметр'});
-    b += '<div class="actions"><button class="btn" onclick="finishTraining(\'' + tr.id + '\')">Закончить — несыгранные не в зачёт</button>' +
+    b += trainingBody(tr) + '<div class="actions"><button class="btn" onclick="finishTraining(\'' + tr.id + '\')">Закончить — несыгранные не в зачёт</button>' +
       '<button class="btn" onclick="buildTraining(\'' + p.ladder + '\')">Новая тренировка</button></div>';
   } else {
-    b += '<p>Соберу 3 карты разминки ступенью ниже' + (wu && wu.label && wu.label !== p.label ? ' (' + esc(wu.label) + ')' : '') +
-      ' и 5 новых карт этой ступени, которые ты не играл неделю. Чего нет в игре — скачаю, а играешь по коду карты из поиска в выборе карты.</p>' +
-      '<div class="actions"><button class="btn go" onclick="buildTraining(\'' + p.ladder + '\')">Собрать разминку и тренировку</button></div>';
+    const warm = p.step > 0;
+    b += '<p>Соберу ' + (warm ? '3 карты разминки ступенью ниже' + (wu && wu.label && wu.label !== p.label ? ' (' + esc(wu.label) + ')' : '') + ' и ' : '') +
+      '5 новых карт этой ступени, которые ты не играл неделю' + (warm ? '' : ' (разминки нет — это первая ступень)') + '. ' +
+      'Коды карт появятся здесь сразу после подбора; чего нет в игре — скачаю, а играешь по коду из поиска в выборе карты.</p>' +
+      '<div class="actions"><button class="btn go" onclick="buildTraining(\'' + p.ladder + '\')">' + (warm ? 'Собрать разминку и тренировку' : 'Собрать тренировку') + '</button></div>';
   }
   return task(n, tr ? 'go' : '', head, b);
 }
@@ -659,6 +681,8 @@ function ladderItem(l){
   h += '<div class="steps">' + l.steps.map((s, i) => '<span class="step ' + (i < l.step ? 'done' : i === l.step ? 'cur' : 'lock') + '">' +
     (i < l.step ? '✓ ' : i > l.step ? '🔒 ' : '') + esc(s) + '</span>').join('') + '</div>';
   if (l.soft) h += '<p class="muted">' + esc(l.rule[l.rule.length - 1]) + '</p>';
+  if (l.open) h += '<div class="opentr"><h3>Идёт тренировка — ступень ' + (l.open.step + 1) + ', собрана ' + dt(l.open.created) + '</h3>' + trainingBody(l.open) +
+    '<div class="actions"><button class="btn" onclick="finishTraining(\'' + l.open.id + '\')">Закончить — несыгранные не в зачёт</button></div></div>';
   if (rw.length) h += '<p>Случайные карты на этой ступени: ' + rw.map(x => '<span class="' + (x.ok ? 'ok' : 'bad') + '" title="' + dotTip(x) + '">' + (x.ok ? '✓' : '✗') + '</span>').join(' ') +
     ' — засчитано <b class="' + (l.random.ok >= S.need ? 'ok' : '') + '">' + l.random.ok + '</b> из ' + S.need + ' нужных (считаются последние ' + S.of + ').</p>';
   if (l.random.ups) h += '<p class="muted">Ступеней сдано случайными картами: ' + l.random.ups + '.</p>';
@@ -682,12 +706,13 @@ function ladderItem(l){
       '</table></div>';
   }
   h += '<div class="actions">' + (l.active ? '' : '<button class="btn" onclick="post(\'/api/coach/ladder\', {key:\'' + l.key + '\'})">Сделать основной</button>') +
-    '<button class="btn go" onclick="buildTraining(\'' + l.key + '\')">' + (l.open ? 'Новая тренировка' : 'Собрать тренировку') + '</button>' +
+    '<button class="btn' + (l.open ? '' : ' go') + '" onclick="buildTraining(\'' + l.key + '\')">' + (l.open ? 'Новая тренировка' : 'Собрать тренировку') + '</button>' +
     (l.start != null && l.step > l.start ? '<span class="ok">С начала: +' + (l.step - l.start) + ' ступ.</span>' : '') + '</div>';
   return h + '</div></details>';
 }
 function renderLadders(){
-  if (!LADOPEN) LADOPEN = new Set(S.active ? [S.active] : []);       // сначала раскрыта основная
+  // сначала раскрыты основная и те, где идёт тренировка: в них коды карт, которые надо играть
+  if (!LADOPEN) LADOPEN = new Set([S.active].concat(S.ladders.filter(l => l.open).map(l => l.key)).filter(Boolean));
   let h = '<div class="sechead"><h2>Лестницы</h2><span>ступень сдана, когда засчитаны ' + S.need + ' карты из ' + S.of + ' — в тренировке или среди последних ' + S.of + ' случайных карт ступени</span></div>';
   // программа, запущенная до зачёта по повтору, правила не присылает - тогда и карточки нет (страница читается с диска)
   if (S.rule) h += '<details class="card rule"' + (RULEOPEN ? ' open' : '') + ' ontoggle="RULEOPEN=this.open"><summary><b>Как засчитывается карта</b> <span class="muted">— не «96% и 2 промаха», а разбор повтора: справился ли ты с навыком ступени</span></summary>' +
@@ -710,7 +735,7 @@ function testSection(){
     h += '<div class="card"><h2>' + esc(t.tournament) + ' ' + esc(t.edition) + ' · ' + esc(t.round) + ' <span class="badge ' + (t.status === 'done' ? 'ok' : 'warn') + '">' +
       (t.status === 'done' ? 'итог подведён' : 'идёт') + '</span></h2><p class="muted">Собран ' + dt(t.created) + '. ' +
       'Играй с модом слота; в зачёт идёт первая попытка. Карту найдёшь по коду: скопируй его и вставь в поиск в выборе карты.</p>';
-    const body = mapsTable(t.maps, t.results, {slot:true});
+    const body = (loadingNow(t) ? codesHint(t) : '') + mapsTable(t.maps, t.results, {slot:true});
     let res = '';
     if (t.status !== 'done') res += '<div class="actions"><button class="btn go" ' + (Object.keys(t.results).length >= 3 ? '' : 'disabled') +
       ' onclick="post(\'/api/coach/test/finish\', {id:\'' + t.id + '\'})">Подвести итог</button><span class="muted">Можно, когда сыграно хотя бы 3 карты; лучше — 70% пула.</span></div>';
