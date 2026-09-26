@@ -2230,7 +2230,8 @@ def control_view(st, sc):
     last = days[-1]["created"] if days else None
     rows = []
     for md5, m in ctl["maps"].items():
-        hist = [dict(ts=d["created"], **d["results"][md5]) for d in days if md5 in d.get("results", {})]
+        # ts - когда сыграна сама попытка (он уже есть в results), day - когда начат контрольный день
+        hist = [dict(d["results"][md5], day=d["created"]) for d in days if md5 in d.get("results", {})]
         base = m.get("old") or (dict(acc=hist[0]["acc"], misses=hist[0]["misses"], ts=hist[0]["ts"], source="first")
                                 if hist else None)
         rows.append(dict(m, history=hist, base=base, latest=hist[-1] if hist else None,
