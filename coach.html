@@ -4,60 +4,92 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>osu!drill · тренер</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23161214' stroke='%23ff66aa' stroke-width='4'/%3E%3Ccircle cx='16' cy='16' r='5' fill='%23ff66aa'/%3E%3C/svg%3E">
 <style>
   :root{
     --bg:#161214; --panel:#221b1f; --panel2:#2c2328; --line:#3b2f36; --line2:#4a3b44;
-    --text:#f3eaef; --dim:#ab99a2; --faint:#7d6c75;
-    --accent:#ff66aa; --accent-ink:#2a0d1b; --accent2:#66ccff; --ok:#7ddf90; --warn:#ffcc66; --err:#ff8a8a;
+    --text:#f3eaef; --dim:#ab99a2; --faint:#9a8a95;
+    --accent:#ff66aa; --accent-hi:#ff85bb; --accent-ink:#2a0d1b; --accent2:#66ccff; --ok:#7ddf90; --warn:#ffcc66; --err:#ff8a8a;
     --c-great:#66ccff; --c-ok:#7ddf90; --c-meh:#ffcc66; --c-miss:#ff6b6b;
-    --radius:10px;
+    --radius:12px;
+    color-scheme:dark;
   }
   *{box-sizing:border-box}
   html,body{margin:0;background:var(--bg);color:var(--text)}
+  html{scroll-padding-top:110px}
   body{font:14px/1.45 "Segoe UI",system-ui,-apple-system,sans-serif;min-height:100vh}
+  body.modal-open{overflow:hidden}
   button,input,textarea,select{font:inherit;color:inherit}
   a{color:var(--accent2);text-decoration:none}
   a:hover{text-decoration:underline}
   [hidden]{display:none !important}
-  header{display:flex;align-items:center;gap:14px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--line);
-         position:sticky;top:0;z-index:20;flex-wrap:wrap}
-  header h1{margin:0;font-size:18px;white-space:nowrap}
-  header h1 b{color:var(--accent)}
-  header h1 small{color:var(--dim);font-size:13px;font-weight:400;margin-left:6px}
-  header .info{color:var(--dim);font-size:12px;flex:1;min-width:160px}
+  :focus-visible{outline:2px solid var(--accent2);outline-offset:2px}
+  h2,h3{text-wrap:balance}
+
+  /* шапка: приложение (тренер / подбор карт) и разделы тренера - одна липкая полоса */
+  .topbar{position:sticky;top:0;z-index:20;background:#221b1fee;-webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+          border-bottom:1px solid var(--line)}
+  header{display:flex;align-items:center;gap:10px 18px;padding:9px max(16px, calc((100% - 1268px) / 2)) 0;flex-wrap:wrap}
+  .logo{display:flex;align-items:center;gap:8px;color:var(--text);white-space:nowrap;flex:none}
+  .logo:hover{text-decoration:none}
+  .logo svg{width:24px;height:24px;flex:none}
+  .logo .name{margin:0;font-size:18px;font-weight:700;letter-spacing:.2px;line-height:1.2}
+  .logo .name b{color:var(--accent)}
+  .appnav{display:flex;border:1px solid var(--line2);border-radius:9px;overflow:hidden;flex:none}
+  .appnav a{padding:5px 12px;color:var(--dim);font-size:12.5px;font-weight:600}
+  .appnav a:hover{color:var(--text);text-decoration:none;background:var(--panel2)}
+  .appnav a.on{background:var(--accent);color:var(--accent-ink)}
+  header .meta{flex:1;min-width:180px;color:var(--dim);font-size:12.5px;text-align:right}
+  header .meta b{color:var(--text);font-weight:600}
   .iconbtn{background:var(--panel2);border:1px solid var(--line2);border-radius:8px;padding:5px 10px;cursor:pointer;
            color:var(--text);font-size:12px;white-space:nowrap;display:inline-block}
   .iconbtn:hover{border-color:var(--accent);text-decoration:none}
-  nav.tabs{display:flex;gap:6px;padding:12px 20px 0;max-width:1300px;margin:0 auto;flex-wrap:wrap}
-  nav.tabs button{padding:8px 14px;border:1px solid var(--line2);background:var(--panel2);color:var(--dim);border-radius:8px;cursor:pointer}
-  nav.tabs button.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
-  main{max-width:1300px;margin:0 auto;padding:14px 20px 120px}
-  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:14px;align-items:start}
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
+  nav.tabs{display:flex;gap:2px;padding:6px max(16px, calc((100% - 1268px) / 2)) 0;overflow-x:auto}
+  nav.tabs button{padding:9px 14px 10px;border:0;border-bottom:2px solid transparent;background:none;color:var(--dim);cursor:pointer;
+                  font-size:13.5px;font-weight:600;white-space:nowrap}
+  nav.tabs button:hover{color:var(--text)}
+  nav.tabs button.on{color:var(--text);border-bottom-color:var(--accent)}
+  main{max-width:1300px;margin:0 auto;padding:16px 16px 140px}
+
+  /* сетки */
+  .cols{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,380px);gap:16px;align-items:start}
+  .cols2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+  @media (max-width:1000px){ .cols,.cols2{grid-template-columns:minmax(0,1fr)} }
+  .sechead{display:flex;align-items:baseline;gap:10px;margin:22px 2px 10px}
+  .sechead:first-child{margin-top:2px}
+  .sechead h2{margin:0;font-size:12px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);font-weight:700}
+  .sechead span{color:var(--faint);font-size:12.5px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:14px}
   .card h2{margin:0 0 8px;font-size:15px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-  .card h3{margin:14px 0 6px;font-size:12px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint)}
+  .card h3{margin:16px 0 6px;font-size:11.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--faint);font-weight:700}
   .card p{margin:6px 0;color:var(--dim)}
-  .muted{color:var(--faint);font-size:12px}
-  .big{font-size:22px;font-weight:700}
-  .btn{padding:9px 14px;border-radius:8px;cursor:pointer;font-size:13px;border:1px solid var(--line2);background:var(--panel2);color:var(--text)}
+  .card p b{color:var(--text)}
+  .card.hero{border-color:#ff66aa66;background:radial-gradient(120% 160% at 0% 0%,#ff66aa1f 0%,#ff66aa00 55%),var(--panel)}
+  .muted{color:var(--faint);font-size:12.5px}
+  .btn{padding:9px 15px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600;border:1px solid var(--line2);
+       background:var(--panel2);color:var(--text);transition:background-color .12s,border-color .12s}
   .btn:hover:not(:disabled){border-color:var(--accent)}
-  .btn.go{border:none;background:var(--accent);color:var(--accent-ink);font-weight:700}
+  .btn.go{border-color:var(--accent);background:var(--accent);color:var(--accent-ink);font-weight:700}
+  .btn.go:hover:not(:disabled){background:var(--accent-hi);border-color:var(--accent-hi)}
   .btn.small{padding:5px 10px;font-size:12px}
   .btn:disabled{opacity:.45;cursor:default}
-  .actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
-  .badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;border:1px solid var(--line2);color:var(--dim);font-weight:500}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:12px}
+  .badge{display:inline-block;font-size:11px;padding:1px 7px;border-radius:10px;border:1px solid var(--line2);color:var(--dim);font-weight:500;white-space:nowrap}
   .badge.acc{border-color:var(--accent);color:var(--accent)}
   .badge.ok{border-color:#2f5d3a;color:var(--ok)}
   .badge.bad{border-color:#6b2a2a;color:var(--err)}
   .badge.warn{border-color:#6b4a1f;color:var(--warn)}
   .badge.mod{border-color:#28465a;color:var(--accent2)}
+  /* код карты: главный способ открыть карту в lazer */
   .code{font:12px/1.3 Consolas,"Cascadia Mono",monospace;padding:2px 8px;border-radius:6px;border:1px dashed var(--line2);
         background:var(--panel2);color:var(--text);cursor:pointer;white-space:nowrap}
   .code:hover{border-color:var(--accent)}
-  .code.big{font-size:17px;padding:5px 12px;border-style:solid;border-color:var(--accent)}
+  .code.big{font-size:20px;font-weight:700;padding:6px 16px;border-style:solid;border-color:var(--accent);letter-spacing:.5px}
   .code.done{border-color:#2f5d3a;color:var(--ok)}
   table{width:100%;border-collapse:collapse;font-size:12.5px}
-  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:top}
+  tr:last-child td{border-bottom:0}
   th{color:var(--faint);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.4px}
   td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   tr.click{cursor:pointer}
@@ -75,80 +107,155 @@
   .weak span{color:var(--dim);font-size:12.5px}
   ul.plain{margin:6px 0;padding-left:18px;color:var(--dim)}
   ul.plain li{margin:3px 0}
-  .split{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:14px;align-items:start}
+  .split{display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:16px;align-items:start}
   @media (max-width:900px){ .split{grid-template-columns:minmax(0,1fr)} }
-  .sess{padding:8px 10px;border:1px solid var(--line);border-radius:8px;margin-bottom:6px;cursor:pointer;background:var(--panel)}
+  .sess{padding:8px 10px;border:1px solid var(--line);border-radius:9px;margin-bottom:6px;cursor:pointer;background:var(--panel)}
   .sess:hover{border-color:var(--accent)}
   .sess.on{border-color:var(--accent);background:var(--panel2)}
-  .kpis{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 4px}
+  .kpis{display:flex;gap:22px;flex-wrap:wrap;margin:6px 0 4px}
   .kpi{min-width:84px}
-  .kpi .v{font-size:19px;font-weight:700;font-variant-numeric:tabular-nums}
-  .kpi .l{font-size:11px;color:var(--faint)}
+  .kpi .v{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .kpi .l{font-size:11.5px;color:var(--faint)}
   .causes{display:flex;height:12px;border-radius:6px;overflow:hidden;margin:6px 0;background:var(--panel2)}
   .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--dim)}
   .legend i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:0}
   svg text{fill:var(--faint);font-size:11px}
-  .modal{position:fixed;inset:0;background:#000b;display:none;align-items:flex-start;justify-content:center;z-index:50;padding:30px 14px;overflow:auto}
+
+  /* «Сегодня»: план - карточки с меткой слева */
+  .task{display:grid;grid-template-columns:34px minmax(0,1fr);gap:0 12px}
+  .task .ic{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-weight:700;font-size:13px;
+            border:2px solid var(--line2);color:var(--dim);margin-top:1px}
+  .task.due .ic{border-color:var(--accent);background:var(--accent);color:var(--accent-ink)}
+  .task.go .ic{border-color:var(--accent);color:var(--accent)}
+  .task.later{opacity:.8}
+  .task h2{margin-top:4px}
+  .now-map{font-size:16px;font-weight:600;margin:2px 0 8px}
+  .now-code{display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin:10px 0}
+  .lastres{margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+  .mini .kpis{gap:18px}
+  .mini .kpi .v{font-size:18px}
+
+  /* лестницы: строка-сводка, подробности по щелчку */
+  details.lad{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px}
+  details.lad[open]{border-color:var(--line2)}
+  details.lad>summary{list-style:none;cursor:pointer;display:grid;grid-template-columns:minmax(150px,210px) minmax(0,1fr) auto;
+                      gap:6px 16px;align-items:center;padding:12px 16px}
+  details.lad>summary::-webkit-details-marker{display:none}
+  details.lad>summary:hover{background:#ffffff05}
+  .lad-name{font-weight:700;display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .lad-prog{min-width:0}
+  .lad-prog .bar{height:8px;border-radius:4px;background:var(--panel2);overflow:hidden}
+  .lad-prog .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:4px}
+  .lad-prog .lab{font-size:12.5px;color:var(--dim);margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .lad-prog .lab b{color:var(--text)}
+  .lad-side{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+  .dots{font-size:12px;letter-spacing:1px;white-space:nowrap}
+  .lad-body{padding:2px 16px 14px;border-top:1px solid var(--line)}
+  details.lad.active{border-color:#ff66aa66}
+  @media (max-width:800px){ details.lad>summary{grid-template-columns:minmax(0,1fr)} .lad-side{justify-content:flex-start} }
+
+  .modal{position:fixed;inset:0;background:#000b;display:none;align-items:flex-start;justify-content:center;z-index:50;padding:30px 14px;overflow:auto;
+         overscroll-behavior:contain}
   .modal.open{display:flex}
-  .modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:12px;width:100%;max-width:1100px;padding:18px 20px}
+  .modal .box{background:var(--panel);border:1px solid var(--line2);border-radius:14px;width:100%;max-width:1100px;padding:18px 20px;box-shadow:0 20px 60px #000a}
   .modal .box.narrow{max-width:660px}
+  .modal .box:focus{outline:none}
   .chips{display:flex;flex-wrap:wrap;gap:6px;margin:12px 0 4px}
   .chip{padding:6px 11px;border-radius:16px;border:1px solid var(--line2);background:var(--panel2);color:var(--dim);cursor:pointer;font-size:13px}
   .chip small{color:var(--faint);margin-left:3px}
-  .chip:hover{border-color:var(--accent)}
+  .chip:hover{border-color:var(--accent);color:var(--text)}
   .chip.on{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:600}
   .chip.on small{color:var(--accent-ink);opacity:.7}
   .chip.farm.on{background:var(--warn);border-color:var(--warn);color:#2a1d05}
-  .jobpanel{position:fixed;right:16px;bottom:16px;width:min(560px,calc(100vw - 32px));background:#110d0f;border:1px solid var(--line2);
-            border-radius:10px;z-index:60;box-shadow:0 10px 30px #000c}
-  .jobhead{display:flex;gap:8px;align-items:center;padding:8px 10px;border-bottom:1px solid var(--line)}
-  .jobhead b{flex:1;font-size:13px}
-  #joblog{margin:0;padding:10px;height:220px;overflow:auto;font:12px/1.5 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;color:#d7c9d0}
+
+  /* задача в фоне: полоса хода, этап, журнал по запросу */
+  .jobpanel{position:fixed;right:16px;bottom:16px;width:min(520px,calc(100vw - 32px));background:#110d0f;border:1px solid var(--line2);
+            border-radius:12px;z-index:60;box-shadow:0 10px 30px #000c;padding:10px 12px 12px}
+  .jobhead{display:flex;gap:8px;align-items:center}
+  .jobhead b{flex:1;font-size:13px;min-width:0}
+  .jobpanel.done{border-color:#2f5d3a}
+  .jobpanel.done .jobhead b{color:var(--ok)}
+  .jobpanel.fail{border-color:#6b2a2a}
+  .jobpanel.fail .jobhead b{color:var(--err)}
+  .ptime{font-variant-numeric:tabular-nums;color:var(--faint);font-size:12px;white-space:nowrap}
+  .pbar{position:relative;height:5px;border-radius:3px;background:var(--panel2);overflow:hidden;margin:9px 0 7px}
+  .pbar i{position:absolute;top:0;bottom:0;left:-35%;width:35%;border-radius:3px;
+          background:linear-gradient(90deg,var(--accent),var(--accent2));animation:indet 1.4s ease-in-out infinite}
+  .pbar.det i{left:0;animation:none;transition:width .4s ease}
+  .jobpanel.done .pbar i,.jobpanel.fail .pbar i{left:0;width:100%;animation:none}
+  .jobpanel.fail .pbar i{background:var(--err)}
+  @keyframes indet{to{left:100%}}
+  .jobstep{font-size:12.5px;color:var(--dim);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #joblogbox{margin-top:6px}
+  #joblogbox>summary{cursor:pointer;color:var(--faint);font-size:12px;width:max-content}
+  #joblog{margin:6px 0 0;padding:8px;max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;
+          font:12px/1.5 Consolas,"Cascadia Mono",monospace;white-space:pre-wrap;color:#d7c9d0}
+  .x{display:grid;place-items:center;width:28px;height:28px;padding:0;border:1px solid transparent;border-radius:7px;background:none;
+     color:var(--dim);font-size:20px;line-height:1;cursor:pointer;flex:none}
+  .x:hover{background:var(--panel2);border-color:var(--line2);color:var(--text)}
+  #toast{position:fixed;left:50%;bottom:24px;z-index:120;transform:translate(-50%,16px);max-width:min(640px,calc(100vw - 32px));
+         padding:9px 16px;border-radius:12px;background:#0e0b0d;border:1px solid var(--line2);color:var(--text);font-size:13px;
+         opacity:0;pointer-events:none;transition:opacity .15s,transform .15s}
+  #toast.show{opacity:1;transform:translate(-50%,0)}
+  #toast.err{border-color:#6b2a2a;color:var(--err)}
   textarea{width:100%;min-height:70px;padding:8px 10px;background:var(--panel2);border:1px solid var(--line2);border-radius:7px;color:var(--text)}
-  select{background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:6px 8px}
+  select{background:var(--panel2);border:1px solid var(--line2);border-radius:7px;padding:7px 9px}
+  input:focus,textarea:focus,select:focus{outline:none;border-color:var(--accent)}
   .ok{color:var(--ok)} .bad{color:var(--err)} .warn{color:var(--warn)}
+  details.more{margin-top:12px}
+  details.more>summary{cursor:pointer;color:var(--dim);font-size:12.5px;width:max-content}
+  details.more>summary:hover{color:var(--text)}
+  @media (prefers-reduced-motion:reduce){
+    *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition:none !important}
+    .pbar i{left:0;width:100%;opacity:.55}
+  }
 </style>
 </head>
 <body>
-<header>
-  <h1>osu!<b>drill</b><small>тренер</small></h1>
-  <div class="info" id="info">загружаю…</div>
-  <button class="iconbtn" onclick="refresh(true)">Обновить</button>
-  <a class="iconbtn" href="/">Подбор карт</a>
-</header>
-<nav class="tabs" id="tabs">
-  <button data-tab="today" class="on">Сегодня</button>
-  <button data-tab="ladders">Лестницы</button>
-  <button data-tab="review">Разборы</button>
-  <button data-tab="profile">Профиль</button>
-  <button data-tab="progress">Прогресс</button>
-  <button data-tab="test">Тест</button>
-  <button data-tab="control">Контрольные</button>
-</nav>
+<div class="topbar">
+  <header>
+    <a class="logo" href="/coach#today" translate="no">
+      <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="12.5" fill="none" stroke="#ff66aa" stroke-width="4"/><circle cx="16" cy="16" r="5" fill="#ff66aa"/></svg>
+      <h1 class="name">osu!<b>drill</b></h1>
+    </a>
+    <nav class="appnav" aria-label="Программа"><a href="/coach" class="on" aria-current="page">Тренер</a><a href="/">Подбор карт</a></nav>
+    <div class="meta" id="info">загружаю…</div>
+    <button class="iconbtn" onclick="refresh(true)" title="Перечитать попытки из базы игры">Обновить</button>
+  </header>
+  <nav class="tabs" id="tabs" role="tablist" aria-label="Тренер">
+    <button data-tab="today" role="tab">Сегодня</button>
+    <button data-tab="ladders" role="tab">Лестницы</button>
+    <button data-tab="review" role="tab">Разборы</button>
+    <button data-tab="profile" role="tab">Профиль</button>
+    <button data-tab="control" role="tab">Контрольные</button>
+  </nav>
+</div>
 <main>
   <div id="error"></div>
   <section id="tab-today"></section>
   <section id="tab-ladders" hidden></section>
   <section id="tab-review" hidden></section>
   <section id="tab-profile" hidden></section>
-  <section id="tab-progress" hidden></section>
-  <section id="tab-test" hidden></section>
   <section id="tab-control" hidden></section>
 </main>
 
-<div class="jobpanel" id="jobpanel" hidden>
-  <div class="jobhead"><b id="jobtitle">Работаю…</b>
+<div class="jobpanel" id="jobpanel" role="status" hidden>
+  <div class="jobhead"><b id="jobtitle">Работаю…</b><span class="ptime" id="jobtime"></span>
     <button class="iconbtn" id="jobstop" onclick="stopJob()">Остановить</button>
-    <button class="iconbtn" onclick="$('jobpanel').hidden = true">Скрыть</button></div>
-  <pre id="joblog"></pre>
+    <button class="x" onclick="hideJob()" aria-label="Скрыть">×</button></div>
+  <div class="pbar" id="jobbar"><i></i></div>
+  <div class="jobstep" id="jobstep"></div>
+  <details id="joblogbox"><summary>Подробности</summary><pre id="joblog"></pre></details>
 </div>
-<div class="modal" id="playmodal" onclick="if(event.target===this)closePlay()"><div class="box" id="playbox"></div></div>
-<div class="modal" id="askmodal" onclick="if(event.target===this)closeAsk()"><div class="box narrow" id="askbox"></div></div>
+<div class="modal" id="playmodal" onclick="if(event.target===this)closePlay()"><div class="box" id="playbox" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+<div class="modal" id="askmodal" onclick="if(event.target===this)closeAsk()"><div class="box narrow" id="askbox" role="dialog" aria-modal="true" tabindex="-1"></div></div>
+<div id="toast" role="status" aria-live="polite"></div>
 
 <script>
 const $ = id => document.getElementById(id);
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER = null, LASTUPD = null, LASTRND = null, LASTPROF = null, BUSY = false;
+let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER = null, LASTUPD = null, LASTRND = null, LASTPROF = null;
+let JOBCLOCK = null, JOBHIDE = null, JOBSTART = 0, JOBFRAC = null, JOBFAILS = 0, LADOPEN = null;
 
 const OFFLINE = 'Программа osu!drill не отвечает — похоже, она закрыта. Запусти её (start.bat в папке osu-trainer): страница переподключится сама.';
 async function api(path, body){
@@ -156,7 +263,7 @@ async function api(path, body){
   let r;
   try { r = await fetch(path, opt); } catch(e){ throw new Error(OFFLINE); }   /* сеть: программа не запущена */
   const d = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(d.error || ('ошибка ' + r.status));
+  if (!r.ok){ const e = new Error(d.error || ('ошибка ' + r.status)); e.status = r.status; throw e; }
   return d;
 }
 const pct = (x, d = 1) => x == null ? '—' : (x * 100).toFixed(d) + '%';
@@ -186,6 +293,29 @@ function copyCode(ev, el){
     setTimeout(() => { el.classList.remove('done'); el.textContent = text; }, 1400);
   }, () => {});
 }
+let TOASTT = null;
+function toast(text, kind){ const el = $('toast'); el.textContent = text; el.className = 'show ' + (kind || '');
+  clearTimeout(TOASTT); TOASTT = setTimeout(() => el.className = '', kind === 'err' ? 6000 : 2500); }
+
+/* ============================== вкладки (адрес помнит вкладку: /coach#ladders) ============================== */
+const TABS = ['today', 'ladders', 'review', 'profile', 'control'];
+const ALIAS = {progress:'profile', test:'ladders'};      // бывшие вкладки теперь внутри этих
+const tabFrom = h => { h = String(h || '').replace(/^#/, ''); return TABS.includes(h) ? h : ALIAS[h] || 'today'; };
+function showTab(t){
+  TAB = t;
+  document.querySelectorAll('#tabs button').forEach(x => { const on = x.dataset.tab === t; x.classList.toggle('on', on); x.setAttribute('aria-selected', on ? 'true' : 'false'); });
+  document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + t);
+}
+function switchTab(t, anchor){
+  const tab = tabFrom(t);
+  if (location.hash !== '#' + tab) history.replaceState(null, '', '#' + tab);
+  showTab(tab); render();
+  anchor = anchor || (t === 'test' ? 'testsec' : '');
+  if (anchor) setTimeout(() => { const el = $(anchor); if (el) el.scrollIntoView({block:'start'}); }, 30);
+  else window.scrollTo(0, 0);
+}
+document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+addEventListener('hashchange', () => { const t = tabFrom(location.hash); if (t !== TAB){ showTab(t); render(); } });
 
 /* ============================== загрузка ============================== */
 async function refresh(force){
@@ -193,8 +323,7 @@ async function refresh(force){
     if (force) await api('/api/coach/refresh', {});
     S = await api('/api/coach/state');
     $('error').innerHTML = S.error ? '<div class="errbox">' + esc(S.error) + '</div>' : '';
-    $('info').textContent = 'попыток в базе: ' + S.plays + ' · твой уровень ~' + num(S.comfort, 2) + '★' +
-      (S.updated ? ' · обновлено ' + ago(S.updated) : '');
+    $('info').innerHTML = 'уровень <b>~' + num(S.comfort, 2) + '★</b> · попыток: ' + S.plays + (S.updated ? ' · обновлено ' + ago(S.updated) : '');
     // следующую случайную карту готовит фон без новых попыток - её тоже надо показать сразу
     const rnd = JSON.stringify(S.random);
     // и ход проверки профиля osu!: она идёт больше часа, а новых попыток за это время может не быть
@@ -207,38 +336,62 @@ async function refresh(force){
 }
 function render(){
   if (!S) return;
-  ({today:renderToday, ladders:renderLadders, review:renderReview, profile:renderProfile, progress:renderProgress, test:renderTest, control:renderControl}[TAB])();
+  ({today:renderToday, ladders:renderLadders, review:renderReview, profile:renderProfile, control:renderControl}[TAB])();
 }
-document.querySelectorAll('#tabs button').forEach(b => b.onclick = () => {
-  TAB = b.dataset.tab;
-  document.querySelectorAll('#tabs button').forEach(x => x.classList.toggle('on', x === b));
-  document.querySelectorAll('main > section').forEach(s => s.hidden = s.id !== 'tab-' + TAB);
-  render();
-});
 
 /* ============================== задачи (подбор и скачивание карт) ============================== */
 async function startJob(path, body, title){
   try {
     const r = await api(path, body || {});
-    JOB = r.id; JOBSEEN = 0; $('joblog').textContent = ''; $('jobtitle').textContent = title || 'Работаю…';
-    $('jobpanel').hidden = false; $('jobstop').disabled = false;
-    clearInterval(JOBTIMER); JOBTIMER = setInterval(pollJob, 800);
-  } catch(e){ alert(e.message); }
+    JOB = r.id; JOBSEEN = 0; JOBFAILS = 0; JOBSTART = Date.now(); JOBFRAC = null;
+    $('joblog').textContent = ''; $('jobtitle').textContent = title || 'Работаю…'; $('jobstep').textContent = 'в очереди…';
+    $('jobpanel').className = 'jobpanel'; $('jobpanel').hidden = false; $('jobstop').hidden = false;
+    clearTimeout(JOBHIDE); clearInterval(JOBTIMER); JOBTIMER = setInterval(pollJob, 800);
+    clearInterval(JOBCLOCK); JOBCLOCK = setInterval(jobTick, 1000); jobTick();
+  } catch(e){ toast(e.message, 'err'); }
+}
+/* полоса: этап - последняя строка журнала, счётчик «…3/8» в строке с отступом заполняет её */
+function jobLines(lines){
+  lines.forEach(line => {
+    if (!line.trim()) return;
+    const m = line.match(/(\d+)\s*\/\s*(\d+)/);
+    if (/^\S/.test(line)) JOBFRAC = null;
+    else if (m && +m[2] > 0) JOBFRAC = [Math.min(+m[1], +m[2]), +m[2]];
+    $('jobstep').textContent = line.trim();
+  });
+}
+function jobTick(){
+  const bar = $('jobbar');
+  $('jobtime').textContent = (JOBFRAC ? JOBFRAC[0] + '/' + JOBFRAC[1] + ' · ' : '') + mmss((Date.now() - JOBSTART) / 1000);
+  bar.classList.toggle('det', !!JOBFRAC);
+  bar.firstElementChild.style.width = JOBFRAC ? (JOBFRAC[0] / JOBFRAC[1] * 100) + '%' : '';
 }
 async function pollJob(){
   if (!JOB) return;
-  let d; try { d = await api('/api/job?id=' + encodeURIComponent(JOB) + '&from=' + JOBSEEN); } catch(e){ return; }
+  let d;
+  try { d = await api('/api/job?id=' + encodeURIComponent(JOB) + '&from=' + JOBSEEN); JOBFAILS = 0; }
+  /* программу перезапустили - задачи больше нет, не ждать её вечно */
+  catch(e){ if (e.status === 404 || ++JOBFAILS > 30) jobEnd({state:'error', error:'задача потерялась — программу перезапускали, запусти ещё раз'}); return; }
   if (d.lines && d.lines.length){ JOBSEEN = d.total; const l = $('joblog');
-    l.textContent += (l.textContent ? '\n' : '') + d.lines.join('\n'); l.scrollTop = l.scrollHeight; }
+    l.textContent += (l.textContent ? '\n' : '') + d.lines.join('\n'); l.scrollTop = l.scrollHeight; jobLines(d.lines); }
+  jobTick();
   if (d.state === 'queued' || d.state === 'running') return;
-  clearInterval(JOBTIMER); JOB = null; $('jobstop').disabled = true;
-  $('jobtitle').textContent = d.state === 'done' ? 'Готово' : d.state === 'cancelled' ? 'Остановлено' : 'Ошибка: ' + (d.error || '');
+  jobEnd(d);
+}
+function jobEnd(d){
+  clearInterval(JOBTIMER); clearInterval(JOBCLOCK); JOB = null; JOBFRAC = null; $('jobstop').hidden = true; jobTick();
+  const ok = d.state === 'done', stopped = d.state === 'cancelled';
+  $('jobtitle').textContent = ok ? 'Готово' : stopped ? 'Остановлено' : 'Ошибка: ' + (d.error || '');
+  $('jobpanel').className = 'jobpanel ' + (ok ? 'done' : stopped ? '' : 'fail');
+  if (!ok && !stopped) $('joblogbox').open = true;
+  if (ok) JOBHIDE = setTimeout(() => { if (!$('joblogbox').open) hideJob(); }, 6000);   // удачное - само уходит
   refresh(true);
 }
+function hideJob(){ clearTimeout(JOBHIDE); $('jobpanel').hidden = true; }
 async function stopJob(){ if (JOB) try { await api('/api/cancel', {id:JOB}); } catch(e){} }
-async function post(path, body){ try { await api(path, body); await refresh(true); } catch(e){ alert(e.message); } }
+async function post(path, body){ try { await api(path, body); await refresh(true); } catch(e){ toast(e.message, 'err'); } }
 
-/* ============================== «Сегодня» ============================== */
+/* ============================== «Сегодня»: слева - что делать, справа - что знать ============================== */
 function thrText(t){ return 'Порог: ' + S.need + ' карты из ' + S.of + ' с точностью от ' + Math.round(t.acc * 100) + '% и не больше ' + t.misses + ' промахов — считается первая сохранённая попытка каждой карты.'; }
 function mapsTable(maps, results, opts){
   opts = opts || {};
@@ -254,28 +407,8 @@ function mapsTable(maps, results, opts){
         '<td class="num">' + num(m.sr, 2) + '</td>' + (opts.value ? '<td class="num">' + esc(m.label || m.value || '') + '</td>' : '') +
         '<td class="num">' + res + '</td></tr>'; }).join('') + '</table></div>';
 }
-function trainingBlock(p){
-  const tr = p.open;
-  let h = '<h2>Тренировка: ' + esc(p.title) + ' <span class="badge acc">ступень ' + (p.step + 1) + '</span></h2>' +
-    '<p><b>' + esc(p.label) + '</b></p><p class="muted">' + esc(thrText(p.threshold)) + '</p>';
-  if (p.escape) h += escapeBox(p.ladder);
-  if (tr){
-    const res = tr.results || {}, ok = Object.values(res).filter(r => r.ok).length, played = Object.keys(res).length;
-    h += '<p>Сыграно ' + played + ' из ' + tr.maps.length + ', сдано <b class="' + (ok >= S.need ? 'ok' : '') + '">' + ok + '</b> из ' + Math.min(S.need, tr.maps.length) + ' нужных.</p>' +
-      '<p class="muted">Карты уже в библиотеке игры. Нажми на код карты, чтобы скопировать, и вставь его в поиск в выборе карты — lazer найдёт её по номеру. ' +
-      'Если поиск пустой, lazer ещё импортирует карту: подожди пару секунд.</p>';
-    if (tr.warmup && tr.warmup.length) h += '<h3>Разминка — ступенью ниже, в зачёт не идёт</h3><p class="muted">' +
-      tr.warmup.map(m => esc(m.artist) + ' — ' + esc(m.title) + ' ' + codeChip(m)).join('; ') + '</p>';
-    h += '<h3>Карты ступени</h3>' + mapsTable(tr.maps, res, {value:'параметр'});
-    h += '<div class="actions"><button class="btn" onclick="finishTraining(\'' + tr.id + '\')">Закончить — несыгранные не в зачёт</button>' +
-      '<button class="btn" onclick="buildTraining(\'' + p.ladder + '\')">Новая тренировка</button></div>';
-  } else {
-    h += '<p>Соберу 5 новых карт этой ступени (которые ты не играл неделю) и 3 карты разминки ступенью ниже. Чего нет в игре — скачаю, ' +
-      'а играть их будешь по коду из поиска в выборе карты: коллекций тренер не делает.</p>' +
-      '<div class="actions"><button class="btn go" onclick="buildTraining(\'' + p.ladder + '\')">Собрать разминку и тренировку</button></div>';
-  }
-  return h;
-}
+/* карточка плана: номер или значок слева, заголовок и содержимое справа */
+const task = (ic, cls, head, body) => '<div class="card task ' + (cls || '') + '"><div class="ic">' + ic + '</div><div>' + head + body + '</div></div>';
 function escapeBox(key){
   return '<div class="warnbox">Три тренировки подряд порог не взят. Так бывает: порог может быть высоковат или ступень слишком крутая. Что делаем?' +
     '<div class="actions"><button class="btn small" onclick="post(\'/api/coach/ladder\', {key:\'' + key + '\', escape:\'back\'})">Шаг назад</button>' +
@@ -284,6 +417,28 @@ function escapeBox(key){
 }
 function buildTraining(key){ startJob('/api/coach/training', {ladder:key}, 'Собираю разминку и тренировку'); }
 function finishTraining(id){ if (confirm('Закончить тренировку? Несыгранные карты не будут засчитаны.')) post('/api/coach/training/finish', {id}); }
+function trainingTask(p, wu, n){
+  const tr = p.open;
+  const head = '<h2>Тренировка: ' + esc(p.title) + ' <span class="badge acc">ступень ' + (p.step + 1) + '</span></h2>' +
+    '<p><b>' + esc(p.label) + '</b></p><p class="muted">' + esc(thrText(p.threshold)) + '</p>';
+  let b = p.escape ? escapeBox(p.ladder) : '';
+  if (tr){
+    const res = tr.results || {}, ok = Object.values(res).filter(r => r.ok).length, played = Object.keys(res).length;
+    b += '<p>Сыграно ' + played + ' из ' + tr.maps.length + ', сдано <b class="' + (ok >= S.need ? 'ok' : '') + '">' + ok + '</b> из ' + Math.min(S.need, tr.maps.length) + ' нужных.</p>' +
+      '<p class="muted">Карты уже в библиотеке игры. Нажми на код карты, чтобы скопировать, и вставь его в поиск в выборе карты — lazer найдёт её по номеру. ' +
+      'Если поиск пустой, lazer ещё импортирует карту: подожди пару секунд.</p>';
+    if (tr.warmup && tr.warmup.length) b += '<h3>Разминка — ступенью ниже, в зачёт не идёт</h3><ul class="plain">' +
+      tr.warmup.map(m => '<li>' + esc(m.artist) + ' — ' + esc(m.title) + (m.diff ? ' <span class="muted">[' + esc(m.diff) + ']</span>' : '') + ' ' + codeChip(m) + '</li>').join('') + '</ul>';
+    b += '<h3>Карты ступени</h3>' + mapsTable(tr.maps, res, {value:'параметр'});
+    b += '<div class="actions"><button class="btn" onclick="finishTraining(\'' + tr.id + '\')">Закончить — несыгранные не в зачёт</button>' +
+      '<button class="btn" onclick="buildTraining(\'' + p.ladder + '\')">Новая тренировка</button></div>';
+  } else {
+    b += '<p>Соберу 3 карты разминки ступенью ниже' + (wu && wu.label && wu.label !== p.label ? ' (' + esc(wu.label) + ')' : '') +
+      ' и 5 новых карт этой ступени, которые ты не играл неделю. Чего нет в игре — скачаю, а играешь по коду карты из поиска в выборе карты.</p>' +
+      '<div class="actions"><button class="btn go" onclick="buildTraining(\'' + p.ladder + '\')">Собрать разминку и тренировку</button></div>';
+  }
+  return task(n, tr ? 'go' : '', head, b);
+}
 
 // зачёт случайной карты в лестницу: строка для карточки и значок для истории
 function creditLine(k){
@@ -296,49 +451,83 @@ function creditBadges(ks){
   return (ks || []).filter(k => k.counted).map(k => '<span class="badge ' + (k.ok ? 'ok' : 'bad') + '">' + esc(k.title) +
     (k.up ? ' ↑' + (k.step + 2) : k.ok ? ' +' : ' ✗') + '</span>').join(' ');
 }
-function randomCard(r){
-  if (!r) return '';
-  const opts = '<option value="any"' + (r.skill === 'any' ? ' selected' : '') + '>любой навык</option>' +
+/* случайные карты: режим идёт - это карточка «Сейчас» наверху; иначе - пункт плана */
+const rndLive = r => !!(r && (r.auto || r.preparing || r.error || (r.current && !r.current.result)));
+function rndSelect(r){
+  return '<select id="rndskill" aria-label="Навык случайной карты"><option value="any"' + (r.skill === 'any' ? ' selected' : '') + '>любой навык</option>' +
     '<option value="ladders"' + (r.skill === 'ladders' ? ' selected' : '') + '>навык моих лестниц</option>' +
     '<option value="farm"' + (r.skill === 'farm' ? ' selected' : '') + (r.farm_ready ? '' : ' disabled') + '>фарм-карты' +
       (r.farm_ready ? '' : ' (сначала отметь фарм)') + '</option>' +
-    r.skills.map(s => '<option value="' + s.key + '"' + (r.skill === s.key ? ' selected' : '') + '>' + esc(s.title) + '</option>').join('');
-  const c = r.current;
-  let h = '<div class="card" style="grid-column:1/-1"><h2>Случайная карта' + (r.auto ? ' <span class="badge acc">идёт</span>' : '') + '</h2>';
-  if (r.preparing) h += '<p class="warn">Готовлю следующую карту…</p>';
-  else if (r.error) h += '<div class="errbox">' + esc(r.error) + '. Режим остановлен — нажми «Дай карту», чтобы попробовать снова.</div>';
-  if (c && !c.result){
-    h += '<p><b>' + mapName(c) + '</b> · ' + num(c.sr, 2) + '★ · <span class="badge acc">' + esc(c.skill_title) + '</span> ' +
-      (c.farm ? '<span class="badge warn">фарм</span> ' : '') +
-      '<a href="https://osu.ppy.sh/b/' + (+c.bid) + '" target="_blank" rel="noopener">↗</a></p>' +
-      '<p>Код: ' + codeChip(c, true) + ' — нажми, чтобы скопировать, и вставь в поиск в выборе карты: lazer найдёт её по номеру. ' +
-      'Если поиск пока пустой — lazer ещё импортирует карту, подожди пару секунд.</p>' +
-      (c.ladder ? '<p>Ступень ' + (c.ladder_step + 1) + ' твоей лестницы <b>' + esc(c.ladder_title) + '</b> (' + esc(c.ladder_label) + '): возьмёшь порог — пойдёт в зачёт.</p>' : '') +
-      '<p class="muted">' + esc(c.why) + '. Сыграй её: результат появится здесь через несколько секунд после конца карты, и сразу будет следующая.</p>';
-  } else if (c && c.result){
-    const x = c.result;
-    h += '<p>Сыграно: <b>' + mapName(c) + '</b> ' + mods(x.mods) + ' — <b>' + pct(x.acc, 2) + '</b> · ' + x.misses + ' пр.' +
-      (x.weak && x.weak.length ? ' · слабее всего: ' + x.weak.map(esc).join(', ') : '') +
-      ' · <a href="#" onclick="openPlay(\'' + x.id + '\');return false">разбор</a></p>' +
-      (x.kind && x.kind.length ? '<p class="muted">Как сыграна' + (x.mods && x.mods.length ? ', с модами' : '') + ': ' + x.kind.map(esc).join(', ') + '</p>' : '') +
-      (x.ladders && x.ladders.length ? '<ul class="plain">' + x.ladders.map(k => '<li>' + creditLine(k) + '</li>').join('') + '</ul>' : '') +
-      (r.auto ? '' : '<p class="muted">Режим остановлен.</p>');
-  } else {
-    h += '<p>Дам одну новую карту случайного навыка около твоего уровня (~' + num(S.comfort, 2) + '★), которую ты не играл неделю. ' +
-      'Сыграл — сразу следующая, и так сколько хочешь. Похожих на твои фарм-карты не будет — разве что выберешь «фарм-карты».</p>' +
-      '<p class="muted">Если на навык есть твоя лестница, карта будет с твоей ступени. ' +
-      'Карты идут в зачёт лестниц, как в тренировке: порог взят на ' + S.need + ' из последних ' + S.of + ' карт ступени — ступень сдана. ' +
-      'Моды учитываются: с DT, HR или HD карта считается такой, какой ты её сыграл.</p>';
-  }
-  h += '<div class="actions"><select id="rndskill">' + opts + '</select>' +
-    '<button class="btn go"' + (r.preparing ? ' disabled' : '') + ' onclick="startJob(\'/api/coach/random\', {action:\'next\', skill:$(\'rndskill\').value}, \'Ищу случайную карту\')">' +
-    (c && !c.result ? 'Другую' : 'Дай карту') + '</button>' +
-    (r.auto ? '<button class="btn" onclick="post(\'/api/coach/random\', {action:\'stop\'})">Стоп</button>' : '') + '</div>';
-  if (r.history.length) h += '<h3>Последние сыгранные (' + r.played + ')</h3><div class="tablewrap"><table><tr><th>Карта</th><th>Как сыграна</th><th class="num">★</th><th class="num">Результат</th><th>Зачёт</th></tr>' +
+    r.skills.map(s => '<option value="' + s.key + '"' + (r.skill === s.key ? ' selected' : '') + '>' + esc(s.title) + '</option>').join('') + '</select>';
+}
+const rndGo = (r, label, primary) => '<button class="btn' + (primary ? ' go' : '') + '"' + (r.preparing ? ' disabled' : '') +
+  ' onclick="startJob(\'/api/coach/random\', {action:\'next\', skill:$(\'rndskill\').value}, \'Ищу случайную карту\')">' + label + '</button>';
+function resultLine(x, c){
+  return '<p>Сыграно: <b>' + mapName(c) + '</b> ' + mods(x.mods) + ' — <b>' + pct(x.acc, 2) + '</b> · ' + x.misses + ' пр.' +
+    (x.weak && x.weak.length ? ' · слабее всего: ' + x.weak.map(esc).join(', ') : '') +
+    ' · <a href="#" onclick="openPlay(\'' + x.id + '\');return false">разбор</a></p>' +
+    (x.kind && x.kind.length ? '<p class="muted">Как сыграна' + (x.mods && x.mods.length ? ', с модами' : '') + ': ' + x.kind.map(esc).join(', ') + '</p>' : '') +
+    (x.ladders && x.ladders.length ? '<ul class="plain">' + x.ladders.map(k => '<li>' + creditLine(k) + '</li>').join('') + '</ul>' : '');
+}
+function randomHistory(r){
+  if (!r.history.length) return '';
+  return '<details class="more"><summary>Последние случайные карты (сыграно ' + r.played + ')</summary><div class="tablewrap"><table><tr><th>Карта</th><th>Как сыграна</th><th class="num">★</th><th class="num">Результат</th><th>Зачёт</th></tr>' +
     r.history.map(x => '<tr class="click" onclick="openPlay(\'' + x.result.id + '\')"><td>' + mapName(x) + ' ' + codeChip(x) + '</td>' +
       '<td class="muted">' + esc((x.result.kind && x.result.kind.length ? x.result.kind : [x.skill_title]).join(', ')) + ' ' + mods(x.result.mods) + '</td><td class="num">' + num(x.sr, 2) + '</td>' +
-      '<td class="num">' + pct(x.result.acc, 2) + ' · ' + x.result.misses + ' пр.</td><td>' + (creditBadges(x.result.ladders) || '<span class="muted">—</span>') + '</td></tr>').join('') + '</table></div>';
-  return h + '</div>';
+      '<td class="num">' + pct(x.result.acc, 2) + ' · ' + x.result.misses + ' пр.</td><td>' + (creditBadges(x.result.ladders) || '<span class="muted">—</span>') + '</td></tr>').join('') + '</table></div></details>';
+}
+function nowCard(r){
+  const c = r.current, fresh = c && !c.result;
+  const last = c && c.result ? [c.result, c] : r.history[0] ? [r.history[0].result, r.history[0]] : null;
+  let h = '<div class="card hero"><h2>Сейчас · случайная карта' + (r.auto ? ' <span class="badge acc">идёт</span>' : '') + '</h2>';
+  if (r.preparing) h += '<p class="warn">Готовлю следующую карту…</p>';
+  else if (r.error) h += '<div class="errbox">' + esc(r.error) + '. Режим остановлен — нажми «Дай карту», чтобы попробовать снова.</div>';
+  if (fresh){
+    h += '<div class="now-map">' + mapName(c) + '</div><p>' + num(c.sr, 2) + '★ · <span class="badge acc">' + esc(c.skill_title) + '</span> ' +
+      (c.farm ? '<span class="badge warn">фарм</span> ' : '') + '<a href="https://osu.ppy.sh/b/' + (+c.bid) + '" target="_blank" rel="noopener">страница карты ↗</a></p>' +
+      '<div class="now-code">' + codeChip(c, true) + '<span class="muted">Нажми — код скопируется. Вставь его в поиск в выборе карты: lazer найдёт её по номеру. ' +
+      'Если поиск пока пустой — lazer ещё импортирует карту, подожди пару секунд.</span></div>' +
+      (c.ladder ? '<p>Ступень ' + (c.ladder_step + 1) + ' твоей лестницы <b>' + esc(c.ladder_title) + '</b> (' + esc(c.ladder_label) + '): возьмёшь порог — пойдёт в зачёт.</p>' : '') +
+      '<p class="muted">' + esc(c.why) + '. Сыграй её: результат появится здесь через несколько секунд после конца карты, и сразу будет следующая.</p>';
+  }
+  h += '<div class="actions">' + rndSelect(r) + rndGo(r, fresh ? 'Другую' : 'Дай карту', !fresh) +
+    (r.auto ? '<button class="btn" onclick="post(\'/api/coach/random\', {action:\'stop\'})">Стоп</button>' : '') + '</div>';
+  if (last) h += '<div class="lastres"><h3 style="margin-top:0">' + (fresh ? 'Прошлая карта' : 'Последняя карта') + '</h3>' + resultLine(last[0], last[1]) +
+    (!fresh && !r.auto ? '<p class="muted">Режим остановлен.</p>' : '') + '</div>';
+  return h + randomHistory(r) + '</div>';
+}
+function randomTask(r, n){
+  const c = r.current;
+  return task(n, '', '<h2>Случайные карты</h2>',
+    '<p>Дам одну новую карту случайного навыка около твоего уровня (~' + num(S.comfort, 2) + '★), которую ты не играл неделю. ' +
+    'Сыграл — сразу следующая, и так сколько хочешь. Похожих на твои фарм-карты не будет — разве что выберешь «фарм-карты».</p>' +
+    '<p class="muted">Если на навык есть твоя лестница, карта будет с твоей ступени. ' +
+    'Карты идут в зачёт лестниц, как в тренировке: порог взят на ' + S.need + ' из последних ' + S.of + ' карт ступени — ступень сдана. ' +
+    'Моды учитываются: с DT, HR или HD карта считается такой, какой ты её сыграл.</p>' +
+    (c && c.result ? '<div class="lastres">' + resultLine(c.result, c) + '<p class="muted">Режим остановлен.</p></div>' : '') +
+    '<div class="actions">' + rndSelect(r) + rndGo(r, 'Дай карту', true) + '</div>' + randomHistory(r));
+}
+function testTask(p, n){
+  const t = S.tests[S.tests.length - 1];
+  let b;
+  if (p.status === 'none'){
+    b = '<p>Настоящий пул турнира для 6-digit (RO32/RO16), с модами. Разбор покажет, где ты проседаешь сильнее всего — с этого начнутся лестницы.</p>' +
+      '<div class="actions"><button class="btn go" onclick="startJob(\'/api/coach/test\', {}, \'Собираю тест\')">Собрать тест</button></div>';
+  } else {
+    b = '<p><b>' + esc(t.tournament) + ' ' + esc(t.edition) + ' · ' + esc(t.round) + '</b> — сыграно ' + p.played + ' из ' + p.total + '. ' +
+      'Играй с модом слота: HD — с HD, HR — с HR, DT — с DT; NM и TB — без модов.</p>' +
+      '<div class="actions"><button class="btn" onclick="switchTab(\'test\')">Карты теста</button>' +
+      '<button class="btn go" ' + (p.played >= 3 ? '' : 'disabled') + ' onclick="post(\'/api/coach/test/finish\', {id:\'' + t.id + '\'})">Подвести итог</button></div>';
+  }
+  return task(n, 'due', '<h2>Вступительный тест</h2>', b);
+}
+function controlTask(p, n){
+  const b = p.maps ? '<p>' + (p.due ? 'Сыграй контрольные карты и сравни себя со старым собой.' : 'Следующий через ' + p.days_left + ' дн.') +
+      ' Контрольных карт: ' + p.maps + '.</p><p class="muted">Чего нет в игре — скачаю; коды карт для поиска — на вкладке «Контрольные».</p>' +
+      '<div class="actions"><button class="btn' + (p.due ? ' go' : '') + '" onclick="startJob(\'/api/coach/controlday\', {}, \'Собираю контрольные карты\')">Собрать контрольные карты</button>' +
+      '<button class="btn" onclick="switchTab(\'control\')">Коды карт</button></div>'
+    : '<p>Добавь карты «старого себя» — закреплённые скоры и карты, которые сейчас не можешь побить.</p><div class="actions"><button class="btn" onclick="switchTab(\'control\')">Добавить</button></div>';
+  return task(n, p.due ? 'due' : 'later', '<h2>Контрольный день' + (p.due && p.maps ? ' <span class="badge acc">пора</span>' : '') + '</h2>', b);
 }
 function oldCollectionsCard(names){
   if (!names || !names.length) return '';
@@ -350,59 +539,53 @@ function oldCollectionsCard(names){
     '<div class="actions"><button class="btn go" onclick="startJob(\'/api/coach/collections\', {}, \'Убираю коллекции тренера\')">Убрать из игры</button>' +
     '<button class="btn" onclick="post(\'/api/coach/collections\', {keep:true})">Оставить</button></div></div>';
 }
-function renderToday(){
-  let h = '<div class="grid">' + oldCollectionsCard(S.old_collections) + randomCard(S.random);
-  for (const p of S.plan){
-    if (p.kind === 'test'){
-      const t = S.tests[S.tests.length - 1];
-      h += '<div class="card"><h2>Вступительный тест</h2>';
-      if (p.status === 'none'){
-        h += '<p>Настоящий пул турнира для 6-digit (RO32/RO16), с модами. Разбор покажет, где ты проседаешь сильнее всего — с этого начнутся лестницы.</p>' +
-          '<div class="actions"><button class="btn go" onclick="startJob(\'/api/coach/test\', {}, \'Собираю тест\')">Собрать тест</button></div>';
-      } else {
-        h += '<p><b>' + esc(t.tournament) + ' ' + esc(t.edition) + ' · ' + esc(t.round) + '</b> — сыграно ' + p.played + ' из ' + p.total + '. ' +
-          'Играй с модом слота: HD — с HD, HR — с HR, DT — с DT; NM и TB — без модов.</p>' +
-          '<div class="actions"><button class="btn" onclick="switchTab(\'test\')">Карты теста</button>' +
-          '<button class="btn go" ' + (p.played >= 3 ? '' : 'disabled') + ' onclick="post(\'/api/coach/test/finish\', {id:\'' + t.id + '\'})">Подвести итог</button></div>';
-      }
-      h += '</div>';
-    } else if (p.kind === 'training'){
-      h += '<div class="card">' + trainingBlock(p) + '</div>';
-    } else if (p.kind === 'focus'){
-      h += '<div class="card"><h2>Слабое место недели</h2><p><b>' + esc(p.name) + '</b> — ' + esc(p.text) + '.</p>' +
-        '<p class="muted">По ' + p.plays + ' попыткам за ' + p.days + ' дней, соло и мультиплеер. Сложность карт учтена: паттерн сравнивается с остальной картой.</p>' +
-        (p.is_active ? '<p class="ok">Твоя основная лестница — как раз про это.</p>'
-          : '<div class="actions"><button class="btn go" onclick="post(\'/api/coach/ladder\', {key:\'' + p.ladder + '\'})">Качать: ' + esc(p.ladder_title) + '</button>' +
-            '<button class="btn" onclick="switchTab(\'profile\')">Профиль</button></div>') + '</div>';
-    } else if (p.kind === 'free'){
-      const s = S.sessions[0];
-      h += '<div class="card"><h2>Свободная игра</h2><p>Играй что хочешь — соло или мультиплеер: каждая попытка разбирается сама, как только lazer её сохранит.</p>' +
-        (p.habits && p.habits.length ? '<ul class="plain">' + p.habits.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') +
-        (s ? '<p class="muted">Последняя сессия: ' + dt(s.start) + ', карт: ' + s.plays + ', точность ' + pct(s.acc) +
-          (s.weak.length ? ', слабое место — ' + esc(s.weak[0]) : '') + '</p><div class="actions"><button class="btn" onclick="openSession(\'' + s.id + '\')">Разбор сессии</button></div>' : '') + '</div>';
-    } else if (p.kind === 'control'){
-      h += '<div class="card"><h2>Контрольный день</h2>' +
-        (p.maps ? '<p>' + (p.due ? '<b class="warn">Пора</b> — сыграй контрольные карты и сравни себя со старым собой.' :
-          'Следующий через ' + p.days_left + ' дн.') + ' Контрольных карт: ' + p.maps + '.</p>' +
-          '<p class="muted">Чего нет в игре — скачаю; коды карт для поиска — на вкладке «Контрольные».</p>' +
-          '<div class="actions"><button class="btn ' + (p.due ? 'go' : '') + '" onclick="startJob(\'/api/coach/controlday\', {}, \'Собираю контрольные карты\')">Собрать контрольные карты</button></div>'
-          : '<p>Добавь карты «старого себя» — закреплённые скоры и карты, которые сейчас не можешь побить.</p><div class="actions"><button class="btn" onclick="switchTab(\'control\')">Добавить</button></div>') + '</div>';
-    }
-  }
-  if (!S.active){
-    h += '<div class="card"><h2>Лестница</h2><p>Лестницу подберёт вступительный тест. Можно начать и сразу — выбери навык:</p>' + ladderPicker() + '</div>';
-  }
-  h += '</div>';
-  if (S.recent.length){
-    h += '<div class="card"><h2>Последние попытки</h2>' + playsTable(S.recent.slice(0, 10)) + '</div>';
-  }
-  $('tab-today').innerHTML = h;
+/* ступень лестницы - полоса: сколько ступеней уже сдано */
+function ladBar(l){
+  const n = l.steps.length;
+  return '<div class="lad-prog"><div class="bar"><i style="width:' + Math.max(3, 100 * l.step / n) + '%"></i></div>' +
+    '<div class="lab">ступень <b>' + (l.step + 1) + '</b> из ' + n + ' · ' + esc(l.steps[l.step]) + '</div></div>';
 }
-function switchTab(t){ document.querySelector('#tabs button[data-tab="' + t + '"]').click(); }
+function sideCards(focus, free){
+  const a = S.ladders.find(l => l.key === S.active), s = S.sessions[0];
+  let h = '<div class="card mini"><div class="kpis"><div class="kpi"><div class="v">~' + num(S.comfort, 2) + '★</div><div class="l">твой уровень</div></div>' +
+    '<div class="kpi"><div class="v">' + S.plays + '</div><div class="l">попыток в базе</div></div></div>' +
+    (a ? '<h3>Основная лестница — ' + esc(a.title) + '</h3>' + ladBar(a) : '') +
+    '<div class="actions"><button class="btn small" onclick="switchTab(\'ladders\')">Все лестницы</button></div></div>';
+  if (focus) h += '<div class="card"><h2>Слабое место недели</h2><p><b>' + esc(focus.name) + '</b> — ' + esc(focus.text) + '.</p>' +
+    '<p class="muted">По ' + focus.plays + ' попыткам за ' + focus.days + ' дней, соло и мультиплеер. Сложность карт учтена: паттерн сравнивается с остальной картой.</p>' +
+    (focus.is_active ? '<p class="ok">Твоя основная лестница — как раз про это.</p>'
+      : '<div class="actions"><button class="btn" onclick="post(\'/api/coach/ladder\', {key:\'' + focus.ladder + '\'})">Качать: ' + esc(focus.ladder_title) + '</button>' +
+        '<button class="btn" onclick="switchTab(\'profile\')">Профиль</button></div>') + '</div>';
+  h += '<div class="card"><h2>Последняя сессия</h2>' +
+    (s ? '<p>' + dt(s.start) + ' · карт: ' + s.plays + ' · точность <b>' + pct(s.acc) + '</b>' + (s.weak.length ? '<br>слабее всего — ' + esc(s.weak[0]) : '') + '</p>' +
+      '<div class="actions"><button class="btn small" onclick="openSession(\'' + s.id + '\')">Разбор сессии</button></div>' : '<p class="muted">Сессий пока нет.</p>') +
+    (free && free.habits && free.habits.length ? '<h3>Привычки</h3><ul class="plain">' + free.habits.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') +
+    '<p class="muted">Свободная игра тоже считается: соло или мультиплеер — каждая попытка разбирается сама, как только lazer её сохранит.</p></div>';
+  return h;
+}
+function renderToday(){
+  const r = S.random, pk = k => S.plan.find(p => p.kind === k), live = rndLive(r);
+  const test = pk('test'), tr = pk('training'), ctl = pk('control');
+  // порядок: тест (пока не пройден), контрольный день (если пора), тренировка, случайные карты, контрольный день потом
+  const items = [];
+  if (test) items.push(n => testTask(test, n));
+  if (ctl && ctl.due && ctl.maps) items.push(n => controlTask(ctl, n));
+  if (tr) items.push(n => trainingTask(tr, pk('warmup'), n));
+  else if (!S.active) items.push(n => task(n, '', '<h2>Лестница</h2>', '<p>Лестницу подберёт вступительный тест. Можно начать и сразу — выбери навык:</p>' + ladderPicker()));
+  if (r && !live) items.push(n => randomTask(r, n));
+  if (ctl && !(ctl.due && ctl.maps)) items.push(n => controlTask(ctl, n));
+  let main = live ? nowCard(r) : '';
+  // одна главная кнопка на экране: у первого пункта плана, а пока идут случайные карты - ни у одного
+  main += '<div class="sechead"><h2>План на сегодня</h2><span>' + (live ? 'пока идут случайные карты — тренировка и контрольный день подождут' : 'сверху — главное') + '</span></div>' +
+    items.map((f, i) => { const h = f(i + 1); return live || i ? h.split('class="btn go"').join('class="btn"') : h; }).join('');
+  if (S.recent.length) main += '<div class="sechead"><h2>Последние карты</h2><span>все попытки — во вкладке «Разборы»</span></div>' +
+    '<div class="card">' + playsTable(S.recent.slice(0, 6)) + '</div>';
+  $('tab-today').innerHTML = oldCollectionsCard(S.old_collections) + '<div class="cols"><div>' + main + '</div><aside>' + sideCards(pk('focus'), pk('free')) + '</aside></div>';
+}
 function ladderPicker(){
   const have = new Set(S.ladders.map(l => l.key));
   const opts = S.ladder_defs.filter(d => !have.has(d.key)).map(d => '<option value="' + d.key + '">' + esc(d.title) + '</option>').join('');
-  return opts ? '<div class="actions"><select id="ladsel">' + opts + '</select><button class="btn" onclick="post(\'/api/coach/ladder\', {key:$(\'ladsel\').value})">Добавить лестницу</button></div>' : '';
+  return opts ? '<div class="actions"><select id="ladsel" aria-label="Навык лестницы">' + opts + '</select><button class="btn" onclick="post(\'/api/coach/ladder\', {key:$(\'ladsel\').value})">Добавить лестницу</button></div>' : '';
 }
 function playsTable(rows){
   return '<div class="tablewrap"><table><tr><th>Когда</th><th>Карта</th><th>Тип</th><th class="num">★</th><th class="num">Точность</th><th class="num">Промахи</th><th class="num">UR</th><th>Слабее всего</th></tr>' +
@@ -413,36 +596,81 @@ function playsTable(rows){
       '<td class="muted">' + (r.weak || []).map(tagName).map(esc).join(', ') + '</td></tr>').join('') + '</table></div>';
 }
 
-/* ============================== «Лестницы» ============================== */
-function renderLadders(){
-  let h = '';
-  if (!S.ladders.length) h += '<div class="card"><p>Лестниц пока нет. Их заведёт вступительный тест — или добавь сам.</p>' + ladderPicker() + '</div>';
-  for (const l of S.ladders){
-    h += '<div class="card"><h2>' + esc(l.title) + (l.mod ? ' <span class="badge mod">' + esc(l.mod) + '</span>' : '') +
-      (l.active ? ' <span class="badge acc">основная</span>' : '') + '</h2>';
-    h += '<div class="steps">' + l.steps.map((s, i) => '<span class="step ' + (i < l.step ? 'done' : i === l.step ? 'cur' : 'lock') + '">' +
-      (i < l.step ? '✓ ' : i > l.step ? '🔒 ' : '') + esc(s) + '</span>').join('') + '</div>';
-    h += '<p class="muted">' + esc(thrText(l.threshold)) + (l.fails_in_row ? ' Не сдано подряд: ' + l.fails_in_row + '.' : '') + '</p>';
-    const rw = l.random.window;
-    h += rw.length ? '<p>Случайные карты на этой ступени: ' + rw.map(x => '<span class="' + (x.ok ? 'ok' : 'bad') + '" title="' + esc(x.title + ' [' + x.diff + '] · ' + x.value) + '">' + (x.ok ? '✓' : '✗') + '</span>').join(' ') +
-        ' — порог взят на <b class="' + (l.random.ok >= S.need ? 'ok' : '') + '">' + l.random.ok + '</b> из ' + S.need + ' нужных (считаются последние ' + S.of + ').</p>'
-      : '<p class="muted">Случайные карты этой ступени тоже идут в зачёт: порог на ' + S.need + ' из последних ' + S.of + ' — ступень сдана.</p>';
-    if (l.random.ups) h += '<p class="muted">Ступеней сдано случайными картами: ' + l.random.ups + '.</p>';
-    if (l.free && l.free.n) h += '<p>Вне тренировок и случайных карт (соло и мульти, ' + l.free.days + ' дней) на этой ступени: ' + l.free.n + ' карт, порог взят на ' + l.free.ok +
-      ', средняя точность ' + pct(l.free.acc) + '. <span class="muted">В зачёт ступени не идёт — только показывает, как ты тянешь её в обычной игре.</span></p>';
-    if (l.escape) h += escapeBox(l.key);
-    if (l.history.length){
-      h += '<h3>Тренировки</h3><div class="tablewrap"><table><tr><th>Когда</th><th>Ступень</th><th>Итог</th><th class="num">Сдано</th><th class="num">Точность</th><th class="num">Промахи</th><th class="num">UR</th></tr>' +
-        l.history.slice().reverse().map(t => '<tr><td>' + dt(t.created) + '</td><td>' + (t.step + 1) + ' · ' + esc(l.steps[t.step]) + '</td><td>' +
-          ({open:'<span class="badge warn">идёт</span>', passed:'<span class="badge ok">сдана</span>', failed:'<span class="badge bad">не сдана</span>', abandoned:'<span class="badge">брошена</span>'}[t.status] || t.status) +
-          '</td><td class="num">' + t.ok + ' / ' + t.played + ' из ' + t.total + '</td><td class="num">' + pct(t.acc) + '</td><td class="num">' + num(t.misses, 1) + '</td><td class="num">' + num(t.ur) + '</td></tr>').join('') +
-        '</table></div>';
-    }
-    h += '<div class="actions">' + (l.active ? '' : '<button class="btn" onclick="post(\'/api/coach/ladder\', {key:\'' + l.key + '\'})">Сделать основной</button>') +
-      '<button class="btn go" onclick="buildTraining(\'' + l.key + '\')">' + (l.open ? 'Новая тренировка' : 'Собрать тренировку') + '</button></div></div>';
+/* ============================== «Лестницы»: сводка строкой, подробности по щелчку; внизу - тест ============================== */
+function ladToggle(el){ el.open ? LADOPEN.add(el.dataset.key) : LADOPEN.delete(el.dataset.key); }
+function ladderItem(l, sameThr){
+  const rw = l.random.window;
+  let h = '<details class="lad' + (l.active ? ' active' : '') + '" data-key="' + l.key + '"' + (LADOPEN.has(l.key) ? ' open' : '') + ' ontoggle="ladToggle(this)"><summary>' +
+    '<span class="lad-name">' + esc(l.title) + (l.mod ? ' <span class="badge mod">' + esc(l.mod) + '</span>' : '') + (l.active ? ' <span class="badge acc">основная</span>' : '') + '</span>' +
+    ladBar(l) + '<span class="lad-side">' +
+    (rw.length ? '<span class="dots" title="Случайные карты на ступени: порог взят на ' + l.random.ok + ' из ' + S.need + ' нужных">' +
+      rw.map(x => '<span class="' + (x.ok ? 'ok' : 'bad') + '">' + (x.ok ? '✓' : '✗') + '</span>').join('') + '</span>' : '') +
+    (l.open ? '<span class="badge warn">тренировка идёт</span>' : '') +
+    (l.escape ? '<span class="badge bad">нужно решение</span>' : l.fails_in_row ? '<span class="badge">не сдано подряд: ' + l.fails_in_row + '</span>' : '') +
+    '</span></summary><div class="lad-body">';
+  h += '<div class="steps">' + l.steps.map((s, i) => '<span class="step ' + (i < l.step ? 'done' : i === l.step ? 'cur' : 'lock') + '">' +
+    (i < l.step ? '✓ ' : i > l.step ? '🔒 ' : '') + esc(s) + '</span>').join('') + '</div>';
+  if (!sameThr) h += '<p class="muted">' + esc(thrText(l.threshold)) + '</p>';
+  if (rw.length) h += '<p>Случайные карты на этой ступени: ' + rw.map(x => '<span class="' + (x.ok ? 'ok' : 'bad') + '" title="' + esc(x.title + ' [' + x.diff + '] · ' + x.value) + '">' + (x.ok ? '✓' : '✗') + '</span>').join(' ') +
+    ' — порог взят на <b class="' + (l.random.ok >= S.need ? 'ok' : '') + '">' + l.random.ok + '</b> из ' + S.need + ' нужных (считаются последние ' + S.of + ').</p>';
+  if (l.random.ups) h += '<p class="muted">Ступеней сдано случайными картами: ' + l.random.ups + '.</p>';
+  if (l.free && l.free.n) h += '<p>Вне тренировок и случайных карт (соло и мульти, ' + l.free.days + ' дней) на этой ступени: ' + l.free.n + ' карт, порог взят на ' + l.free.ok +
+    ', средняя точность ' + pct(l.free.acc) + '. <span class="muted">В зачёт ступени не идёт — только показывает, как ты тянешь её в обычной игре.</span></p>';
+  if (l.escape) h += escapeBox(l.key);
+  const hist = l.history.filter(t => t.acc != null);
+  if (hist.length >= 2) h += '<h3>Точность на тренировках</h3>' + chart([{name:'точность на тренировках', color:'#ff66aa', points:hist.map((t, i) => [i, t.acc * 100, dt(t.created) + ', ступень ' + (t.step + 1)])}],
+    {fmt:y => y.toFixed(1) + '%', labels:[dt(hist[0].created), dt(hist[hist.length - 1].created)]});
+  if (l.history.length){
+    h += '<h3>Тренировки</h3><div class="tablewrap"><table><tr><th>Когда</th><th>Ступень</th><th>Итог</th><th class="num">Сдано</th><th class="num">Точность</th><th class="num">Промахи</th><th class="num">UR</th></tr>' +
+      l.history.slice().reverse().map(t => '<tr><td>' + dt(t.created) + '</td><td>' + (t.step + 1) + ' · ' + esc(l.steps[t.step]) + '</td><td>' +
+        ({open:'<span class="badge warn">идёт</span>', passed:'<span class="badge ok">сдана</span>', failed:'<span class="badge bad">не сдана</span>', abandoned:'<span class="badge">брошена</span>'}[t.status] || t.status) +
+        '</td><td class="num">' + t.ok + ' / ' + t.played + ' из ' + t.total + '</td><td class="num">' + pct(t.acc) + '</td><td class="num">' + num(t.misses, 1) + '</td><td class="num">' + num(t.ur) + '</td></tr>').join('') +
+      '</table></div>';
   }
+  h += '<div class="actions">' + (l.active ? '' : '<button class="btn" onclick="post(\'/api/coach/ladder\', {key:\'' + l.key + '\'})">Сделать основной</button>') +
+    '<button class="btn go" onclick="buildTraining(\'' + l.key + '\')">' + (l.open ? 'Новая тренировка' : 'Собрать тренировку') + '</button>' +
+    (l.start != null && l.step > l.start ? '<span class="ok">С начала: +' + (l.step - l.start) + ' ступ.</span>' : '') + '</div>';
+  return h + '</div></details>';
+}
+function renderLadders(){
+  if (!LADOPEN) LADOPEN = new Set(S.active ? [S.active] : []);       // сначала раскрыта основная
+  const def = S.default_threshold, same = t => !!(def && t && t.acc === def.acc && t.misses === def.misses);
+  let h = '<div class="sechead"><h2>Лестницы</h2><span>' + (def ? esc(thrText(def)) + ' ' : '') + 'Случайные карты ступени тоже идут в зачёт: порог на ' + S.need + ' из последних ' + S.of + ' — ступень сдана.</span></div>';
+  if (!S.ladders.length) h += '<div class="card"><p>Лестниц пока нет. Их заведёт вступительный тест — или добавь сам.</p>' + ladderPicker() + '</div>';
+  S.ladders.slice().sort((a, b) => (b.key === S.active) - (a.key === S.active)).forEach(l => h += ladderItem(l, same(l.threshold)));
   if (S.ladders.length) h += '<div class="card"><h2>Ещё лестница</h2><p class="muted">Лестницы с модами (DT, HR, HD) обычно заводит тест, когда видит просадку именно с модом.</p>' + ladderPicker() + '</div>';
-  $('tab-ladders').innerHTML = h;
+  $('tab-ladders').innerHTML = h + '<div id="testsec">' + testSection() + '</div>';
+}
+function testSection(){
+  const tests = S.tests.slice().reverse(), last = tests[0];
+  let h = '<div class="sechead"><h2>Тест</h2><span>настоящий турнирный пул: показывает, где проседаешь, и заводит лестницы</span></div>';
+  if (!last || last.status === 'done'){
+    h += '<div class="card"><h2>' + (last ? 'Новый тест' : 'Вступительный тест') + '</h2><p>Настоящий пул RO32/RO16 свежего турнира для 6-digit, с модами. ' +
+      (last ? 'Повторять раз в месяц на новом пуле — видно, сместилась ли слабость.' : 'Разбор покажет, где ты проседаешь сильнее всего, и заведёт лестницы.') + '</p>' +
+      '<div class="actions"><button class="btn' + (last ? '' : ' go') + '" onclick="startJob(\'/api/coach/test\', {}, \'Собираю тест\')">Собрать тест</button>' +
+      (last ? '<span class="muted">Последний — ' + dt(last.created) + '.</span>' : '') + '</div></div>';
+  }
+  for (const t of tests){
+    h += '<div class="card"><h2>' + esc(t.tournament) + ' ' + esc(t.edition) + ' · ' + esc(t.round) + ' <span class="badge ' + (t.status === 'done' ? 'ok' : 'warn') + '">' +
+      (t.status === 'done' ? 'итог подведён' : 'идёт') + '</span></h2><p class="muted">Собран ' + dt(t.created) + '. ' +
+      'Играй с модом слота; в зачёт идёт первая попытка. Карту найдёшь по коду: скопируй его и вставь в поиск в выборе карты.</p>';
+    const body = mapsTable(t.maps, t.results, {slot:true});
+    let res = '';
+    if (t.status !== 'done') res += '<div class="actions"><button class="btn go" ' + (Object.keys(t.results).length >= 3 ? '' : 'disabled') +
+      ' onclick="post(\'/api/coach/test/finish\', {id:\'' + t.id + '\'})">Подвести итог</button><span class="muted">Можно, когда сыграно хотя бы 3 карты; лучше — 70% пула.</span></div>';
+    if (t.diagnosis){
+      const d = t.diagnosis;
+      res += '<h3>Итог</h3>' + (d.reasons.length ? '<ul class="plain">' + d.reasons.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') + weakList(d.weak);
+      if (d.insights.length) res += '<ul class="plain">' + d.insights.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
+      const mg = Object.entries(d.mods);
+      if (mg.length) res += '<p class="muted">Точность по модам: ' + mg.map(([k, x]) => esc(k) + ' — ' + pct(x)).join(', ') + '.</p>';
+      if (d.ladders.length) res += '<div class="actions">' + d.ladders.map(k => { const def = S.ladder_defs.find(x => x.key === k);
+        return '<button class="btn" onclick="post(\'/api/coach/ladder\', {key:\'' + k + '\'}).then(() => switchTab(\'today\'))">Качать: ' + esc(def ? def.title : k) + '</button>'; }).join('') + '</div>';
+    }
+    // у пройденного теста главное - итог, карты свёрнуты; у идущего - карты
+    h += t.status === 'done' ? res + '<details class="more"><summary>Карты теста (' + t.maps.length + ')</summary>' + body + '</details></div>' : body + res + '</div>';
+  }
+  return h;
 }
 
 /* ============================== «Разборы» ============================== */
@@ -454,7 +682,8 @@ async function renderReview(){
   let left = list.map(s => '<div class="sess' + (s.id === SESSION ? ' on' : '') + '" onclick="SESSION=\'' + s.id + '\';renderReview()">' +
     '<b>' + dt(s.start) + '</b> <span class="muted">· ' + s.plays + ' карт · ' + pct(s.acc) + ' · UR ' + num(s.ur) + '</span>' +
     (s.weak.length ? '<div class="muted">слабее всего: ' + s.weak.map(esc).join(', ') + '</div>' : '') + '</div>').join('');
-  $('tab-review').innerHTML = '<div class="split"><div>' + left + '</div><div id="sessdetail"><div class="card"><p class="muted">загружаю…</p></div></div></div>';
+  $('tab-review').innerHTML = '<div class="split"><div><div class="sechead"><h2>Сессии</h2><span>перерыв больше 30 минут — новая</span></div>' + left +
+    '</div><div id="sessdetail"><div class="card"><p class="muted">загружаю…</p></div></div></div>';
   try {
     const v = await api('/api/coach/session?id=' + encodeURIComponent(SESSION));
     $('sessdetail').innerHTML = sessionDetail(v);
@@ -500,7 +729,7 @@ function tagTable(tags, base){
 
 /* ============================== разбор одной карты ============================== */
 async function openPlay(id){
-  $('playbox').innerHTML = '<p class="muted">загружаю…</p>'; $('playmodal').classList.add('open');
+  $('playbox').innerHTML = '<p class="muted">загружаю…</p>'; $('playmodal').classList.add('open'); $('playbox').focus({preventScroll:true});
   try { const v = await api('/api/coach/play?id=' + encodeURIComponent(id)); $('playbox').innerHTML = playDetail(v); }
   catch(e){ $('playbox').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; }
 }
@@ -515,9 +744,9 @@ function maybeAsk(){
   if (v && !$('askmodal').classList.contains('open') && ASKCLOSED !== v.id) showAsk(v);
 }
 async function openAsk(id){
-  try { showAsk(Object.assign(await api('/api/coach/label?id=' + encodeURIComponent(id)), {fromPlay:true})); } catch(e){ alert(e.message); }
+  try { showAsk(Object.assign(await api('/api/coach/label?id=' + encodeURIComponent(id)), {fromPlay:true})); } catch(e){ toast(e.message, 'err'); }
 }
-function showAsk(v){ ASK = v; ASKSEL = new Set(v.chosen); ASKFARM = !!v.farm; renderAsk(); $('askmodal').classList.add('open'); }
+function showAsk(v){ ASK = v; ASKSEL = new Set(v.chosen); ASKFARM = !!v.farm; renderAsk(); $('askmodal').classList.add('open'); $('askbox').focus({preventScroll:true}); }
 function closeAsk(){ if (ASK) ASKCLOSED = ASK.id; $('askmodal').classList.remove('open'); }
 function toggleAsk(k){ ASKSEL.has(k) ? ASKSEL.delete(k) : ASKSEL.add(k); renderAsk(); }
 function renderAsk(){
@@ -546,13 +775,13 @@ async function askPost(body){
     $('askmodal').classList.remove('open'); ASK = null;
     if (v && v.fromPlay && $('playmodal').classList.contains('open')) openPlay(v.id);
     await refresh(); render();
-  } catch(e){ alert(e.message); }
+  } catch(e){ toast(e.message, 'err'); }
 }
 function sendAsk(skip){ askPost(skip ? {id:ASK.id, skip:true} : {id:ASK.id, skills:[...ASKSEL], farm:ASKFARM}); }
 function playDetail(v){
   const r = v.row, a = v.analysis;
   let h = '<div style="display:flex;gap:10px;align-items:flex-start"><div style="flex:1"><h2 style="margin:0 0 4px">' + mapName(r) + ' ' + mods(r.mods) + '</h2>' +
-    '<div class="muted">' + dt(r.ts) + ' · ' + num(r.sr, 2) + '★ · <a href="https://osu.ppy.sh/b/' + (+r.bid) + '" target="_blank" rel="noopener">страница карты</a></div></div>' +
+    '<div class="muted">' + dt(r.ts) + ' · ' + num(r.sr, 2) + '★ · <a href="https://osu.ppy.sh/b/' + (+r.bid) + '" target="_blank" rel="noopener">страница карты</a> · код ' + codeChip(r) + '</div></div>' +
     '<button class="iconbtn" onclick="closePlay()">Закрыть</button></div>';
   h += '<div class="kpis"><div class="kpi"><div class="v">' + pct(r.acc, 2) + '</div><div class="l">точность · ' + (RANK[r.rank] || '') + '</div></div>' +
     '<div class="kpi"><div class="v">' + r.misses + '</div><div class="l">промахов</div></div>' +
@@ -621,13 +850,21 @@ function timeline(a){
   return s;
 }
 
-/* ============================== «Профиль» ============================== */
+/* ============================== «Профиль»: динамика, слабые места, тайминг, привычки, отметки ============================== */
 async function renderProfile(){
   $('tab-profile').innerHTML = '<div class="card"><p class="muted">считаю…</p></div>';
-  let v; try { v = await api('/api/coach/profile'); } catch(e){ $('tab-profile').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; return; }
-  if (!v.plays){ $('tab-profile').innerHTML = '<div class="card"><p>За последние 30 дней попыток нет.</p></div>'; return; }
-  let h = '<div class="grid">';
-  h += '<div class="card"><h2>Слабые места за 30 дней</h2><p class="muted">' + v.plays + ' попыток, ' + v.notes.toLocaleString('ru') + ' нот, соло и мультиплеер. ' +
+  let v, g;
+  try { [v, g] = await Promise.all([api('/api/coach/profile'), api('/api/coach/progress')]); }
+  catch(e){ $('tab-profile').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; return; }
+  const ss = g.sessions, sl = ss.length ? [dt(ss[0].start), dt(ss[ss.length - 1].start)] : null;
+  let h = '<div class="sechead"><h2>Динамика</h2><span>последние ' + ss.length + ' сессий</span></div><div class="cols2">' +
+    '<div class="card"><h2>Точность по сессиям</h2>' + chart([{name:'средняя точность', color:'#ff66aa', points:ss.map((s, i) => [i, s.acc * 100, dt(s.start) + ', ' + s.plays + ' карт'])}],
+      {fmt:y => y.toFixed(1) + '%', labels:sl}) + '<p class="muted">Точки — сессии по порядку.</p></div>' +
+    '<div class="card"><h2>Разброс нажатий (UR)</h2>' + chart([{name:'UR', color:'#66ccff', points:ss.map((s, i) => [i, s.ur, dt(s.start)]).filter(p => p[1])}], {labels:sl}) +
+      '<p class="muted">Чем ниже UR, тем ровнее ты попадаешь в ритм.</p></div></div>';
+  if (!v.plays){ $('tab-profile').innerHTML = h + '<div class="card"><p>За последние 30 дней попыток нет.</p></div>'; return; }
+  h += '<div class="sechead"><h2>Последние 30 дней</h2><span>' + v.plays + ' попыток, ' + v.notes.toLocaleString('ru') + ' нот, соло и мультиплеер</span></div><div class="cols2"><div>';
+  h += '<div class="card"><h2>Слабые места</h2><p class="muted">' +
     'Считается по каждой карте отдельно — паттерн против остальной той же карты, — так сложные карты не выдают свои паттерны за твои слабости.</p>';
   if (!v.weak.length) h += '<p class="muted">Явных слабых мест нет — ошибки распределены ровно.</p>';
   for (const w of v.weak){
@@ -642,12 +879,20 @@ async function renderProfile(){
   const cols = ['#ff66aa', '#66ccff', '#ffcc66'];
   const series = Object.entries(v.series).map(([tag, pts], i) => ({name:v.series_names[tag], color:cols[i % 3], points:pts.map(p => [p.ts, p.ratio, p.n + ' нот'])}));
   h += '<div class="card"><h2>Слабые места по дням</h2>' + chart(series, {fmt:y => y.toFixed(1) + '×'}) +
-    '<p class="muted">1,0× — как остальная карта. Линия вниз — слабость уходит. Точка появляется, если за день набралось хотя бы 30 нот паттерна.</p></div>';
+    '<p class="muted">1,0× — как остальная карта. Линия вниз — слабость уходит. Точка появляется, если за день набралось хотя бы 30 нот паттерна.</p></div></div><div>';
   const t = v.timing;
   h += '<div class="card"><h2>Тайминг</h2><div class="kpis"><div class="kpi"><div class="v">' + (t.mean > 0 ? '+' : '') + num(t.mean, 1) + '</div><div class="l">сдвиг нажатий, мс</div></div>' +
     '<div class="kpi"><div class="v">' + num(t.ur) + '</div><div class="l">UR, медиана по картам</div></div><div class="kpi"><div class="v">' + t.hits.toLocaleString('ru') + '</div><div class="l">попаданий</div></div></div>' +
     (t.tags.length ? '<ul class="plain">' + t.tags.map(x => '<li>' + esc(x.name) + ': ' + (x.mean < 0 ? 'спешишь на ' + num(-x.mean) : 'запаздываешь на ' + num(x.mean)) + ' мс</li>').join('') + '</ul>'
       : '<p class="muted">По отдельным паттернам заметного сдвига нет.</p>') + (t.advice ? '<p>' + esc(t.advice) + '</p>' : '') + '</div>';
+  h += '<div class="card"><h2>Промахи</h2>' + causesBar(v.agg.causes) + (v.insights.length ? '<ul class="plain">' + v.insights.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') + '</div>';
+  const hb = v.habits;
+  h += '<div class="card"><h2>Привычки</h2>';
+  if (hb.buckets.length){
+    h += '<p class="muted">Точность карты против средней по её сессии, по ' + hb.sessions + ' сессиям из 5+ карт:</p><div class="tablewrap"><table>' +
+      hb.buckets.map(b => '<tr><td>' + esc(b.label) + '</td><td class="num ' + (b.delta <= -0.015 ? 'bad' : b.delta >= 0.015 ? 'ok' : '') + '">' + (b.delta >= 0 ? '+' : '') + (b.delta * 100).toFixed(1) + '%</td><td class="num muted">' + b.n + ' карт</td></tr>').join('') + '</table></div>';
+  }
+  h += (hb.lines.length ? '<ul class="plain">' + hb.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '<p class="muted">Явного эффекта разминки или усталости пока не видно.</p>') + '</div></div></div>';
   if (v.types && v.types.length){
     h += '<div class="card"><h2>По типам карт</h2><p class="muted">Тип — главный навык карты по оценкам подбора. Сверху — типы, где точность ниже всего; смотри и на звёзды.</p>' +
       '<div class="tablewrap"><table><tr><th>Тип</th><th class="num">Карт</th><th class="num">Точность</th><th class="num">Промахи</th><th class="num">★</th><th></th></tr>' +
@@ -656,16 +901,7 @@ async function renderProfile(){
           '<td class="num">' + (lad ? '<button class="iconbtn" onclick="post(\'/api/coach/ladder\', {key:\'' + r.ladder + '\'}).then(() => switchTab(\'today\'))">Качать</button>' : '') + '</td></tr>'; }).join('') +
       '</table></div></div>';
   }
-  h += '<div class="card"><h2>Промахи</h2>' + causesBar(v.agg.causes) + (v.insights.length ? '<ul class="plain">' + v.insights.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '') + '</div>';
-  const hb = v.habits;
-  h += '<div class="card"><h2>Привычки</h2>';
-  if (hb.buckets.length){
-    h += '<p class="muted">Точность карты против средней по её сессии, по ' + hb.sessions + ' сессиям из 5+ карт:</p><div class="tablewrap"><table>' +
-      hb.buckets.map(b => '<tr><td>' + esc(b.label) + '</td><td class="num ' + (b.delta <= -0.015 ? 'bad' : b.delta >= 0.015 ? 'ok' : '') + '">' + (b.delta >= 0 ? '+' : '') + (b.delta * 100).toFixed(1) + '%</td><td class="num muted">' + b.n + ' карт</td></tr>').join('') + '</table></div>';
-  }
-  h += (hb.lines.length ? '<ul class="plain">' + hb.lines.map(l => '<li>' + esc(l) + '</li>').join('') + '</ul>' : '<p class="muted">Явного эффекта разминки или усталости пока не видно.</p>') + '</div>';
   h += labelsCard(v.labels);
-  h += '</div>';
   $('tab-profile').innerHTML = h;
 }
 
@@ -700,7 +936,6 @@ function labelsCard(lb){
     ' onchange="post(\'/api/coach/label\', {ask:this.checked})"> спрашивать после каждой карты</label></div></div>';
 }
 
-/* ============================== «Прогресс» ============================== */
 function chart(series, opts){
   opts = opts || {};
   const W = 1000, H = 220, P = 36;
@@ -725,63 +960,8 @@ function chart(series, opts){
   s += '<div class="legend">' + series.map(se => '<span><i style="background:' + se.color + '"></i>' + esc(se.name) + '</span>').join('') + '</div>';
   return s;
 }
-async function renderProgress(){
-  $('tab-progress').innerHTML = '<div class="card"><p class="muted">загружаю…</p></div>';
-  let v; try { v = await api('/api/coach/progress'); } catch(e){ $('tab-progress').innerHTML = '<div class="errbox">' + esc(e.message) + '</div>'; return; }
-  let h = '<div class="grid">';
-  const ss = v.sessions, sl = ss.length ? [dt(ss[0].start), dt(ss[ss.length - 1].start)] : null;
-  h += '<div class="card"><h2>Сессии: точность</h2>' + chart([{name:'средняя точность', color:'#ff66aa', points:ss.map((s, i) => [i, s.acc * 100, dt(s.start) + ', ' + s.plays + ' карт'])}],
-    {fmt:y => y.toFixed(1) + '%', labels:sl}) + '<p class="muted">Точки — сессии по порядку, последние 30.</p></div>';
-  h += '<div class="card"><h2>Сессии: разброс нажатий (UR)</h2>' + chart([{name:'UR', color:'#66ccff', points:ss.map((s, i) => [i, s.ur, dt(s.start)]).filter(p => p[1])}], {labels:sl}) +
-    '<p class="muted">Чем ниже UR, тем ровнее ты попадаешь в ритм.</p></div>';
-  for (const l of v.ladders){
-    const hist = l.history.filter(t => t.acc != null);
-    h += '<div class="card"><h2>' + esc(l.title) + ' — ступень ' + (l.step + 1) + ' из ' + l.steps.length + '</h2>' +
-      '<div class="steps">' + l.steps.map((s, i) => '<span class="step ' + (i < l.step ? 'done' : i === l.step ? 'cur' : 'lock') + '">' + esc(s) + '</span>').join('') + '</div>' +
-      chart([{name:'точность на тренировках', color:'#ff66aa', points:hist.map((t, i) => [i, t.acc * 100, dt(t.created) + ', ступень ' + (t.step + 1)])}],
-        {fmt:y => y.toFixed(1) + '%', labels:hist.length ? [dt(hist[0].created), dt(hist[hist.length - 1].created)] : null}) +
-      (l.start != null && l.step > l.start ? '<p class="ok">С начала: +' + (l.step - l.start) + ' ступ.</p>' : '') + '</div>';
-  }
-  const c = v.control;
-  if (c.maps.length){
-    h += '<div class="card"><h2>Старый ты против нынешнего</h2>' + (c.gap != null ? '<p>Средний разрыв по контрольным картам: <b class="' + (c.gap >= 0 ? 'ok' : 'bad') + '">' +
-      (c.gap >= 0 ? '+' : '') + (c.gap * 100).toFixed(2) + '%</b> точности.</p>' : '<p class="muted">Сыграй контрольный день — появится сравнение.</p>') + controlTable(c.maps) + '</div>';
-  }
-  h += '</div>';
-  $('tab-progress').innerHTML = h;
-}
 
-/* ============================== «Тест» ============================== */
-function renderTest(){
-  let h = '';
-  const tests = S.tests.slice().reverse();
-  const last = tests[0];
-  if (!last || last.status === 'done'){
-    h += '<div class="card"><h2>' + (last ? 'Новый тест' : 'Вступительный тест') + '</h2><p>Настоящий пул RO32/RO16 свежего турнира для 6-digit, с модами. ' +
-      (last ? 'Повторять раз в месяц на новом пуле — видно, сместилась ли слабость.' : 'Разбор покажет, где ты проседаешь сильнее всего, и заведёт лестницы.') + '</p>' +
-      '<div class="actions"><button class="btn go" onclick="startJob(\'/api/coach/test\', {}, \'Собираю тест\')">Собрать тест</button></div></div>';
-  }
-  for (const t of tests){
-    h += '<div class="card"><h2>' + esc(t.tournament) + ' ' + esc(t.edition) + ' · ' + esc(t.round) + ' <span class="badge ' + (t.status === 'done' ? 'ok' : 'warn') + '">' +
-      (t.status === 'done' ? 'итог подведён' : 'идёт') + '</span></h2><p class="muted">Собран ' + dt(t.created) + '. ' +
-      'Играй с модом слота; в зачёт идёт первая попытка. Карту найдёшь по коду: скопируй его и вставь в поиск в выборе карты.</p>' + mapsTable(t.maps, t.results, {slot:true});
-    if (t.status !== 'done') h += '<div class="actions"><button class="btn go" ' + (Object.keys(t.results).length >= 3 ? '' : 'disabled') +
-      ' onclick="post(\'/api/coach/test/finish\', {id:\'' + t.id + '\'})">Подвести итог</button><span class="muted">Можно, когда сыграно хотя бы 3 карты; лучше — 70% пула.</span></div>';
-    if (t.diagnosis){
-      const d = t.diagnosis;
-      h += '<h3>Итог</h3>' + (d.reasons.length ? '<ul class="plain">' + d.reasons.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>' : '') + weakList(d.weak);
-      if (d.insights.length) h += '<ul class="plain">' + d.insights.map(x => '<li>' + esc(x) + '</li>').join('') + '</ul>';
-      const mg = Object.entries(d.mods);
-      if (mg.length) h += '<p class="muted">Точность по модам: ' + mg.map(([k, x]) => esc(k) + ' — ' + pct(x)).join(', ') + '.</p>';
-      if (d.ladders.length) h += '<div class="actions">' + d.ladders.map(k => { const def = S.ladder_defs.find(x => x.key === k);
-        return '<button class="btn" onclick="post(\'/api/coach/ladder\', {key:\'' + k + '\'}).then(() => switchTab(\'today\'))">Качать: ' + esc(def ? def.title : k) + '</button>'; }).join('') + '</div>';
-    }
-    h += '</div>';
-  }
-  $('tab-test').innerHTML = h;
-}
-
-/* ============================== «Контрольные» ============================== */
+/* ============================== «Контрольные»: сначала контрольный день, потом - откуда взять карты ============================== */
 const SOURCE = {pinned:'закреплён', profile:'из профиля', 'osu!':'из профиля'};
 const shownMods = m => (m || []).filter(x => x !== 'CL');
 const scoreText = o => pct(o.acc, 2) + ' · ' + (o.fc ? '<span class="ok">FC</span>' : o.misses + ' пр.') +
@@ -795,25 +975,28 @@ function controlTable(maps){
         '<td class="num">' + (b ? scoreText(b) + (b.ts ? '<div class="muted">' + (b.source === 'first' ? day(b.ts) + ' (первый контроль)' : dayY(b.ts)) + '</div>' : '') : '<span class="muted">нет</span>') + '</td>' +
         '<td class="num">' + (l ? pct(l.acc, 2) + ' · ' + l.misses + ' пр.<div class="muted">' + day(l.ts) + '</div>' : '<span class="muted">ещё не играл</span>') + '</td>' +
         '<td class="num ' + (d == null ? '' : d >= 0 ? 'ok' : 'bad') + '">' + (d == null ? '—' : (d >= 0 ? '+' : '') + (d * 100).toFixed(2) + '%') + '</td>' +
-        '<td class="num"><button class="iconbtn" onclick="if(confirm(\'Убрать карту из контрольных?\'))post(\'/api/coach/control/remove\', {md5:\'' + m.md5 + '\'})">✕</button></td></tr>'; }).join('') + '</table></div>';
+        '<td class="num"><button class="iconbtn" aria-label="Убрать из контрольных" onclick="if(confirm(\'Убрать карту из контрольных?\'))post(\'/api/coach/control/remove\', {md5:\'' + m.md5 + '\'})">✕</button></td></tr>'; }).join('') + '</table></div>';
 }
 function renderControl(){
   const c = S.control, typed = $('ctltext') ? $('ctltext').value : '';
-  let h = '<div class="card"><h2>Контрольные карты — «старый ты»</h2><p>Закреплённые скоры, лучшие скоры профиля и старые карты, которые сейчас не получается побить. ' +
-    'Их играют только в контрольный день раз в две недели — так сравнение «было — стало» остаётся честным, а в тренировки они не попадают.</p>' +
-    '<h3>Добавить по ссылкам</h3><textarea id="ctltext" placeholder="ссылки на карты или номера сложностей, по одной в строке&#10;https://osu.ppy.sh/beatmapsets/1231048#osu/2591748"></textarea>' +
-    '<div class="actions"><button class="btn go" onclick="addControl()">Добавить</button><span class="muted">«Старый ты» — лучший скор на карте из профиля osu! (после проверки профиля) или из истории lazer; если нет ни того, ни другого — точкой отсчёта станет первый контрольный день.</span></div></div>';
+  let h = '<div class="card"><h2>Контрольный день' + (c.due && c.maps.length ? ' <span class="badge acc">пора</span>' : '') + '</h2>' +
+    '<p>Закреплённые скоры, лучшие скоры профиля и старые карты, которые сейчас не получается побить. ' +
+    'Их играют только в контрольный день раз в две недели — так сравнение «было — стало» остаётся честным, а в тренировки они не попадают.</p>';
   if (c.maps.length){
-    h += '<div class="card"><h2>Контрольных карт: ' + c.maps.length + '</h2>' + controlTable(c.maps) +
-      '<div class="actions"><button class="btn ' + (c.due ? 'go' : '') + '" onclick="startJob(\'/api/coach/controlday\', {}, \'Собираю контрольные карты\')">Собрать контрольный день</button>' +
-      '<span class="muted">' + (c.last ? 'Последний: ' + day(c.last) + (c.due ? ' — пора снова.' : ', следующий через ' + c.days_left + ' дн.') : 'Контрольных дней ещё не было.') + '</span></div></div>';
-  }
+    if (c.gap != null) h += '<p>Средний разрыв со старым тобой: <b class="' + (c.gap >= 0 ? 'ok' : 'bad') + '">' + (c.gap >= 0 ? '+' : '') + (c.gap * 100).toFixed(2) + '%</b> точности.</p>';
+    h += '<div class="actions"><button class="btn' + (c.due ? ' go' : '') + '" onclick="startJob(\'/api/coach/controlday\', {}, \'Собираю контрольные карты\')">Собрать контрольный день</button>' +
+      '<span class="muted">' + (c.last ? 'Последний: ' + day(c.last) + (c.due ? ' — пора снова.' : ', следующий через ' + c.days_left + ' дн.') : 'Контрольных дней ещё не было.') + '</span></div>' +
+      '<h3>Контрольные карты: ' + c.maps.length + '</h3>' + controlTable(c.maps);
+  } else h += '<p class="muted">Контрольных карт пока нет — добавь их ниже.</p>';
+  h += '</div><div class="sechead"><h2>Добавить контрольные карты</h2><span>из профиля osu!, из подсказок или по ссылкам</span></div>';
+  if (c.api && c.api.configured && c.profile) h += profileCard(c.profile);
   if (c.suggest.length){
     h += '<div class="card"><h2>Подсказки: старый ты был сильнее</h2><p class="muted">Карты, где старый результат лучше нынешнего — из истории lazer и профиля osu!.</p><div class="tablewrap"><table><tr><th>Карта</th><th class="num">Было</th><th class="num">Сейчас</th><th></th></tr>' +
       c.suggest.map(m => '<tr><td>' + mapName(m) + (m.source === 'osu!' ? ' <span class="badge">профиль</span>' : '') + '</td><td class="num">' + pct(m.old.acc, 2) + '<div class="muted">' + day(m.old.ts) + '</div></td><td class="num">' + (m.now ? pct(m.now.acc, 2) : '—') + '</td>' +
         '<td class="num"><button class="iconbtn" onclick="addControlIds(\'' + m.bid + '\')">Добавить</button></td></tr>').join('') + '</table></div></div>';
   }
-  if (c.api && c.api.configured && c.profile) h += profileCard(c.profile);
+  h += '<div class="card"><h2>По ссылкам</h2><textarea id="ctltext" aria-label="Ссылки на контрольные карты" placeholder="ссылки на карты или номера сложностей, по одной в строке&#10;https://osu.ppy.sh/beatmapsets/1231048#osu/2591748"></textarea>' +
+    '<div class="actions"><button class="btn" onclick="addControl()">Добавить</button><span class="muted">«Старый ты» — лучший скор на карте из профиля osu! (после проверки профиля) или из истории lazer; если нет ни того, ни другого — точкой отсчёта станет первый контрольный день.</span></div></div>';
   h += apiCard(c.api);
   $('tab-control').innerHTML = h;
   if (typed) $('ctltext').value = typed;          // список перерисовывается во время проверки профиля
@@ -825,7 +1008,7 @@ const srText = m => { const o = m.old, k = o.sr != null && Math.abs(o.sr - m.sr)
   return num(k ? o.sr : m.sr, 2) + '★' + (k ? '<div class="muted">без модов ' + num(m.sr, 2) + '★</div>' : ''); };
 function profileRow(m, farmRow){
   const o = m.old, pick = !farmRow && !m.taken;
-  return '<tr><td>' + (pick ? '<input type="checkbox" ' + (PSEL.has(m.bid) ? 'checked ' : '') + 'onchange="pickProfile(' + m.bid + ', this.checked)">' : '') + '</td>' +
+  return '<tr><td>' + (pick ? '<input type="checkbox" aria-label="Выбрать" ' + (PSEL.has(m.bid) ? 'checked ' : '') + 'onchange="pickProfile(' + m.bid + ', this.checked)">' : '') + '</td>' +
     '<td>' + mapName(m) + ' <a href="https://osu.ppy.sh/b/' + (+m.bid) + '" target="_blank" rel="noopener">↗</a> ' + codeChip(m) +
     (m.status === 'loved' ? ' <span class="badge">loved</span>' : '') + (m.taken ? ' <span class="badge ok">в контрольных</span>' : '') +
     (m.mark === false ? ' <span class="badge" title="Ты отметил, что это не фарм">не фарм</span>' :
@@ -867,10 +1050,10 @@ function addPicked(){ if (!PSEL.size) return; const ids = [...PSEL]; PSEL.clear(
 function farmMark(bid, farm){ PSEL.delete(bid); post('/api/coach/profile/farm', {bid, farm}); }
 function apiCard(api){
   api = api || {configured:false, user:''};
-  const form = '<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">' +
-    '<input id="apiid" placeholder="Client ID" style="padding:7px 9px;background:var(--panel2);border:1px solid var(--line2);border-radius:7px">' +
-    '<input id="apisecret" type="password" placeholder="Client Secret" style="padding:7px 9px;background:var(--panel2);border:1px solid var(--line2);border-radius:7px">' +
-    '<input id="apiuser" placeholder="ник в osu! (можно пусто)" value="' + esc(api.user) + '" style="padding:7px 9px;background:var(--panel2);border:1px solid var(--line2);border-radius:7px"></div>' +
+  const form = '<div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">' +
+    '<input id="apiid" aria-label="Client ID" placeholder="Client ID" autocomplete="off" style="padding:7px 9px;background:var(--panel2);border:1px solid var(--line2);border-radius:7px">' +
+    '<input id="apisecret" aria-label="Client Secret" type="password" placeholder="Client Secret" autocomplete="off" style="padding:7px 9px;background:var(--panel2);border:1px solid var(--line2);border-radius:7px">' +
+    '<input id="apiuser" aria-label="Ник в osu!" placeholder="ник в osu! (можно пусто)" autocomplete="off" value="' + esc(api.user) + '" style="padding:7px 9px;background:var(--panel2);border:1px solid var(--line2);border-radius:7px"></div>' +
     '<div class="actions"><button class="btn go" onclick="saveKeys()">Сохранить ключи</button></div>';
   if (!api.configured) return '<div class="card"><h2>Профиль osu! — закреплённые скоры</h2>' +
     '<p>Чтобы тренер сам взял «старого тебя» из профиля (закреплённые скоры и старые результаты на картах, которые ты сейчас играешь), нужен доступ к API osu!. Это 2 минуты:</p>' +
@@ -879,17 +1062,18 @@ function apiCard(api){
     '<li>Скопируй сюда Client ID и Client Secret. Ключи хранятся только на этом компьютере (config.json), тренер только читает публичные данные профиля.</li></ol>' + form + '</div>';
   return '<div class="card"><h2>Профиль osu!' + (api.user ? ' — ' + esc(api.user) : '') + '</h2><p class="muted">Ключи API сохранены.' +
     (api.checked ? ' Последняя проверка старых результатов: ' + dt(api.checked) + '.' : '') + '</p>' +
-    '<div class="actions"><button class="btn go" onclick="startJob(\'/api/coach/pinned\', {}, \'Беру закреплённые скоры\')">Подтянуть закреплённые скоры</button>' +
+    '<div class="actions"><button class="btn" onclick="startJob(\'/api/coach/pinned\', {}, \'Беру закреплённые скоры\')">Подтянуть закреплённые скоры</button>' +
     '<button class="btn" onclick="startJob(\'/api/coach/unbeaten\', {}, \'Ищу, где старый ты сильнее\')">Найти карты, где старый ты сильнее</button>' +
     '<button class="btn" onclick="this.parentNode.nextElementSibling.hidden = false">Сменить ключи</button></div><div hidden>' + form + '</div></div>';
 }
 async function saveKeys(){
-  try { await api('/api/coach/apikeys', {client_id:$('apiid').value, client_secret:$('apisecret').value, user:$('apiuser').value}); await refresh(true); }
-  catch(e){ alert(e.message); }
+  try { await api('/api/coach/apikeys', {client_id:$('apiid').value, client_secret:$('apisecret').value, user:$('apiuser').value}); await refresh(true); toast('Ключи сохранены'); }
+  catch(e){ toast(e.message, 'err'); }
 }
 function addControl(){ const text = $('ctltext').value.trim(); if (!text) return; startJob('/api/coach/control/add', {text}, 'Добавляю контрольные карты'); }
 function addControlIds(bid){ startJob('/api/coach/control/add', {text:String(bid)}, 'Добавляю контрольную карту'); }
 
+showTab(tabFrom(location.hash));
 refresh();
 setInterval(() => { if (!document.hidden && !JOB) refresh(); }, 10000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && !JOB) refresh(); });
