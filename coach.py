@@ -1063,9 +1063,18 @@ def comfort_stars(sc=None):
     return round(statistics.median(pool), 2) if pool else 5.0
 
 
+STARS_ABOVE = 0.5              # трудность тренировки - в главном параметре ступени, звёзды выше твоего уровня - не больше
+STARS_BELOW = 1.2
+
+
+def stars_level(lad, c):
+    """Твой уровень в звёздах для лестницы (у лестниц с модом - в звёздах карты без мода)."""
+    return c * lad.get("stars_scale", 1.0) + lad.get("stars_shift", 0.0)
+
+
 def stars_window(lad, c):
-    c2 = c * lad.get("stars_scale", 1.0) + lad.get("stars_shift", 0.0)
-    return max(1.0, round(c2 - 1.2, 1)), round(c2 + 1.0, 1)
+    c2 = stars_level(lad, c)
+    return max(1.0, round(c2 - STARS_BELOW, 1)), round(c2 + STARS_ABOVE, 1)
 
 
 def initial_step(lad, sc):
@@ -1210,27 +1219,45 @@ def escape(st, key, choice):
     ld["escape"] = False
 
 
-def pick_maps(lad, step, stars, exclude, count, log):
-    """Новые карты ступени: подбор osu!drill по навыку + фильтр по главному параметру."""
+def _song(m):
+    """Песня карты: другие сложности и другие наборы той же песни ((Cut Ver.), (TV Size)) - та же песня."""
+    return trainer.song_key(m) if m.get("title") else m["sid"]
+
+
+def pick_maps(lad, step, stars, level, exclude, count, log, songs=()):
+    """Новые карты ступени: подбор osu!drill по навыку + фильтр по главному параметру. Из подошедших - вдвое больше
+    нужного ближе всего к level по звёздам, и уже из них - с самой высокой оценкой навыка. Сразу по оценке нельзя:
+    она растёт со скоростью streams и плотностью нот, и первыми шли бы карты у верха рамки. songs - песни, которые
+    уже взяты (_song): одна песня - одна карта."""
     lo, hi = step_window(lad, step)
-    params = dict(skill=lad["skill"], stars="%.2f-%.2f" % stars, count=count * 4, pool=300, depth=250,
-                  crowd_weight=0.5, per_set=1, status="ranked,loved", lang="ru", min_score=25, dry_run=True)
+    params = dict(skill=lad["skill"], stars="%.2f-%.2f" % stars, count=count * 8, pool=300, depth=250,
+                  crowd_weight=0.5, per_set=3, status="ranked,loved", lang="ru", min_score=25, dry_run=True)
+    if lad["param"] == "length":
+        # длину зеркало знает до разбора: без фильтра кандидаты навыка - длинные карты, и короткая ступень пустеет.
+        # У зеркала длина от начала музыки, у ступени - от первой ноты: сверху запас на вступление
+        params["length"] = "%d-%d" % (lo, min(hi, 100000) + 30)
     a = trainer.coerce_params(params)
     a.metric_filter = lambda m, c: meets(lad, m) and in_step(lad, step, param_value(lad, m)) and not is_farm(m, c)
     a.exclude_md5 = set(exclude)
     a.adjust = personal_adjust
     trainer.prepare(a)
     picked, _name = trainer.select(a, log)
-    out, sids = [], set()
-    for c in picked:
-        if c["md5"] in exclude or c["sid"] in sids:
+    near, songs = [], set(songs)
+    for c in sorted(picked, key=lambda c: abs(c["sr"] - level)):
+        if c["md5"] in exclude or _song(c) in songs:
             continue
-        sids.add(c["sid"])
+        songs.add(_song(c))
+        near.append(c)
+        if len(near) >= count * 2:
+            break
+    out = []
+    for c in sorted(near, key=lambda c: -c["score"])[:count]:
         v = param_value(lad, c["metrics"])
         out.append(dict(bid=c["bid"], sid=c["sid"], md5=c["md5"], sr=c["sr"], title=c["title"], artist=c["artist"],
                         diff=c["diff"], value=round(v, 3), label=_fmt(lad, v), why=c.get("why", "")))
-        if len(out) >= count:
-            break
+    out.sort(key=lambda m: m["sr"])
+    if out:
+        log("Звёзды около ~%.1f★: %s" % (level, ", ".join("%.2f★" % m["sr"] for m in out)))
     return out
 
 
@@ -1268,7 +1295,7 @@ def build_training(key, log, write=True):
         lad = LADDERS[key]
         step = ld["step"]
         c = comfort_stars(sc)
-        stars = stars_window(lad, c)
+        stars, level = stars_window(lad, c), stars_level(lad, c)
         exclude = played_recently(sc) | reserved_md5(st)
         for tr in st["trainings"]:          # и не повторять карты прошлых тренировок этой лестницы
             if tr["ladder"] == key:
@@ -1277,14 +1304,23 @@ def build_training(key, log, write=True):
         if warmed:
             exclude |= {m["md5"] for m in warmed["maps"]}
         save_state(st)
-    log("Тренировка: %s, ступень %d — %s. Звёзды %.1f–%.1f (твой уровень ~%.1f★)." % (
-        lad["title"], step + 1, step_label(lad, step), stars[0], stars[1], c))
-    maps = pick_maps(lad, step, stars, exclude, OF, log)
+    log("Тренировка: %s, ступень %d — %s. Звёзды %.1f–%.1f, ближе к твоему уровню ~%.1f★." % (
+        lad["title"], step + 1, step_label(lad, step), stars[0], stars[1], level))
+    try:
+        maps = pick_maps(lad, step, stars, level, exclude, OF, log)
+    except RuntimeError as e:           # подбор без единой карты - ошибка; ниже ещё поищем среди карт полегче
+        log(str(e))
+        maps = []
     if len(maps) < OF:
-        log("Нашлось только %d новых карт этой ступени — расширяю звёзды и ищу ещё." % len(maps))
-        wider = (max(1.0, stars[0] - 0.8), stars[1] + 0.8)
-        more = pick_maps(lad, step, wider, exclude | {m["md5"] for m in maps}, OF - len(maps), log)
-        maps += more
+        # трудность ступени - в её параметре: звёзды расширяются только вниз, иначе ступень стала бы картами не по силам
+        log("Нашлось только %d новых карт этой ступени — ищу ещё среди карт полегче." % len(maps))
+        wider = (max(1.0, stars[0] - 0.8), stars[1])
+        try:
+            maps += pick_maps(lad, step, wider, level, exclude | {m["md5"] for m in maps}, OF - len(maps), log,
+                              {_song(m) for m in maps})
+        except RuntimeError as e:
+            log(str(e))
+        maps.sort(key=lambda m: m["sr"])
     if not maps:
         raise RuntimeError("Для этой ступени не нашлось новых карт — попробуй позже или смени лестницу")
     warm = []
@@ -1293,7 +1329,8 @@ def build_training(key, log, write=True):
     elif step > 0:
         log("Разминка: ступенью ниже — %s." % step_label(lad, step - 1))
         try:
-            warm = pick_maps(lad, step - 1, stars, exclude | {m["md5"] for m in maps}, WARMUP_N, log)
+            warm = pick_maps(lad, step - 1, stars, level - 0.5, exclude | {m["md5"] for m in maps}, WARMUP_N, log,
+                             {_song(m) for m in maps})
         except RuntimeError:
             warm = []
     # тренировка - на страницу сразу после подбора, с кодами карт: играть первую можно, пока остальные качаются
