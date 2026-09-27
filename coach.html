@@ -286,13 +286,19 @@ let S = null, TAB = 'today', SESSION = null, JOB = null, JOBSEEN = 0, JOBTIMER =
 let JOBCLOCK = null, JOBHIDE = null, JOBSTART = 0, JOBFRAC = null, JOBFAILS = 0, LADOPEN = null, RULEOPEN = false, WARMOPEN = false;
 
 const OFFLINE = 'Программа osu!drill не отвечает — похоже, она закрыта. Запусти её (start.bat в папке osu-trainer): страница переподключится сама.';
+let POSTING = 0;        // действия в пути (собрать тренировку, отметка...): перезагрузка вкладки оборвала бы их
 async function api(path, body){
   const opt = body === undefined ? {} : {method:'POST', headers:{'Content-Type':'application/json','X-Requested-With':'osu-trainer'}, body:JSON.stringify(body)};
-  let r;
-  try { r = await fetch(path, opt); } catch(e){ throw new Error(OFFLINE); }   /* сеть: программа не запущена */
-  const d = await r.json().catch(() => ({}));
-  if (!r.ok){ const e = new Error(d.error || ('ошибка ' + r.status)); e.status = r.status; throw e; }
-  return d;
+  if (body !== undefined) POSTING++;
+  try {
+    let r;
+    try { r = await fetch(path, opt); } catch(e){ throw new Error(OFFLINE); }   /* сеть: программа не запущена */
+    const d = await r.json().catch(() => ({}));
+    if (!r.ok){ const e = new Error(d.error || ('ошибка ' + r.status)); e.status = r.status; throw e; }
+    return d;
+  } finally {   // счётчик - после того, как вызвавший успеет отметить задачу (JOB = id)
+    if (body !== undefined) setTimeout(() => POSTING--, 0);
+  }
 }
 const pct = (x, d = 1) => x == null ? '—' : (x * 100).toFixed(d) + '%';
 const num = (x, d = 0) => x == null ? '—' : (+x).toFixed(d);
@@ -347,12 +353,13 @@ addEventListener('hashchange', () => { const t = tabFrom(location.hash); if (t !
 
 /* ============================== загрузка ============================== */
 // страница читается с диска на каждый запрос: поменялся файл - код этой вкладки устарел и может упасть на новых
-// данных программы, поэтому она перезагружается сама (не посреди задачи и не с открытым окошком отметок)
+// данных программы, поэтому она перезагружается сама (не посреди задачи, не пока действие ждёт ответа - например,
+// «Собрать тренировку», нажатое, пока вкладка спрашивала программу, - и не с открытым окошком отметок)
 let PAGEV = null;
 function stalePage(){
   if (!S.page) return false;
   if (PAGEV === null) PAGEV = S.page;
-  if (S.page === PAGEV || JOB || $('askmodal').classList.contains('open')) return false;
+  if (S.page === PAGEV || JOB || POSTING || $('askmodal').classList.contains('open')) return false;
   location.reload();
   return true;
 }
