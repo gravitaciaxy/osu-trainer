@@ -361,10 +361,11 @@ def fair(s):
     return not replay.mod_info(s.get("mods"))["unsupported"]
 
 
-def skill_scores(m):
+def skill_scores(m, bm=None, own=True):
     """Оценки навыков карты 0..100 - те же формулы, по которым подбор ищет карты, с поправкой по твоим
-    отметкам похожих карт (raw и formula - без поправки)."""
-    adj = personal(m)
+    отметкам (raw и formula - без поправки). bm - какая это карта (sid, bid): твоя отметка этой сложности
+    решает за неё сама (own=False - без неё), отметки других сложностей той же карты её не сдвигают."""
+    adj = personal(m, bm=bm, own=own)
     out = []
     for key, cfg in skills.SKILLS.items():
         try:
@@ -394,8 +395,8 @@ def _skillset(s):
     m = play_metrics(s)
     if not m:
         return None
-    sc = skill_scores(m)
-    lab = label_for(s)                  # твоя отметка этой карты с этими модами важнее формул
+    sc = skill_scores(m, s)
+    lab = label_for(s)                  # твоя отметка этой сложности с этими модами важнее формул
     if lab:                             # о навыках, которых не было в выборе (старые отметки), решает формула
         kn = labels.known(lab)
         main = [x for x in sc if x["key"] in lab["skills"] or (x["key"] not in kn and x["main"])]
@@ -442,10 +443,10 @@ def row(s, a=None):
 
 # ------------------------------------------------------ отметки навыков ----
 # После карты тренер спрашивает, на какие навыки она на самом деле и не фарм ли это. Отметка заменяет
-# скиллсет этой карты (с этими модами), а по всем отметкам (labels.Model) подбор сдвигает пороги навыков
-# и оценки похожих карт и держит фарм только по просьбе. Так учатся подсказки тренера, случайные карты,
-# тренировки и «Подбор карт» в программе, а обезличенная копия отметок уходит на сайт - и там подбор
-# меняется так же, для всех.
+# скиллсет этой сложности (с этими модами), а по всем отметкам (labels.Model) подбор сдвигает пороги навыков
+# и оценки похожих карт и держит фарм только по просьбе. Другие сложности той же карты отметка не трогает.
+# Так учатся подсказки тренера, случайные карты, тренировки и «Подбор карт» в программе, а обезличенная
+# копия отметок уходит на сайт - и там подбор меняется так же, для всех.
 
 ASK_HOURS = 12          # спрашивать про попытки не старше
 
@@ -493,17 +494,17 @@ def label_model():
     return model
 
 
-def personal(m, keys=None):
-    """Сдвиги оценок навыков по твоим отметкам: {навык: (сдвиг, похожая отмеченная карта или None)}."""
-    return label_model().deltas(m, keys)
+def personal(m, keys=None, bm=None, own=True):
+    """Сдвиги оценок навыков по твоим отметкам: {навык: (сдвиг, отмеченная карта или None, её bid)}."""
+    return label_model().deltas(m, keys, bm, own)
 
 
-def farm_score(m):
-    return label_model().farm_score(m)
+def farm_score(m, bm=None, own=True):
+    return label_model().farm_score(m, bm, own)
 
 
-def is_farm(m):
-    return label_model().is_farm(m)
+def is_farm(m, bm=None):
+    return label_model().is_farm(m, bm)
 
 
 def has_farm():
@@ -514,22 +515,26 @@ def farm_filter(mode):
     return label_model().farm_filter(mode)
 
 
-def personal_adjust(cfg, m, s, why):
+def personal_adjust(cfg, m, s, why, bm=None):
     """Хук подбора (a.adjust в trainer.make_scorer): оценка навыка с поправкой по твоим отметкам."""
-    return label_model().adjust(cfg, m, s, why)
+    return label_model().adjust(cfg, m, s, why, bm)
 
 
 def upgrade_labels(sc=None):
-    """Метрики отметок - под нынешние формулы: у старых отметок нет метрик, появившихся позже (speed/bursts/alt).
-    Пересчитываются по той же попытке; изменённые отметки уходят на сайт."""
+    """Отметки - под нынешний код: у старых отметок нет метрик, появившихся позже (speed/bursts/alt), и номера
+    карты (sid) - без него отметка задела бы другие сложности карты. Берутся из той же попытки; изменённые
+    отметки уходят на сайт."""
     with _lock:
         d = load_labels()
         by_id = {s["id"]: s for s in (sc if sc is not None else scores())}
         changed = False
         for lab in d["labels"].values():
+            s = by_id.get(lab.get("id"))
+            if s and not lab.get("sid") and (s.get("sid") or 0) > 0:
+                lab["sid"] = s["sid"]
+                changed = True
             if "tap_share" in (lab.get("metrics") or {}):
                 continue
-            s = by_id.get(lab.get("id"))
             m = play_metrics(s) if s else None
             if m:
                 lab["metrics"] = m
@@ -590,17 +595,20 @@ def ask_queue(sc=None, every=False):
 
 
 def label_view(s, queue=0):
-    """Что показать в окошке «что это была за карта»."""
+    """Что показать в окошке «что это была за карта». Уже отмеченную попытку тренер оценивает без отметок этой
+    сложности - иначе «тренер думает» повторял бы твою же отметку."""
     ss = skillset(s)
     lab = label_for(s)
-    auto = [x["key"] for x in ss["scores"] if x["main"]][:3]
-    fs, like = farm_score(play_metrics(s))
+    m = play_metrics(s)
+    sc = skill_scores(m, s, own=not lab)
+    auto = [x["key"] for x in sc if x["main"]][:3]
+    fs, like = farm_score(m, s, own=not lab)
     return dict(id=s["id"], title=s["title"], artist=s["artist"], diff=s["diff"], sr=s["sr"], bid=s["bid"],
                 mods=s["mods_list"], mods_name=ss["mods"], acc=round(s["acc"], 4), misses=s["misses"], ts=s["ts"],
                 auto=auto, chosen=lab["skills"] if lab else auto, labeled=bool(lab), queue=queue,
                 farm_auto=fs >= 0.5, farm=bool(lab.get("farm")) if lab else fs >= 0.5, farm_like=like,
                 scores=[dict(key=x["key"], title=x["title"], score=x["score"], why=x["why"], like=x["like"])
-                        for x in ss["scores"]])
+                        for x in sc])
 
 
 def ask_view(sc):
@@ -616,7 +624,7 @@ def play_label(pid):
 
 
 def set_label(pid, chosen=None, skip=False, farm=False):
-    """Отметка навыков попытки (для этой карты с этими модами) или «пропустить». farm - это фарм-карта:
+    """Отметка навыков попытки (для этой сложности с этими модами) или «пропустить». farm - это фарм-карта:
     похожие подбор даёт только по просьбе."""
     with _lock:
         s = next((x for x in scores() if x["id"] == pid), None)
@@ -634,7 +642,7 @@ def set_label(pid, chosen=None, skip=False, farm=False):
                 raise RuntimeError("Для этой попытки нет карты - скиллсет не посчитать")
             d["labels"][label_key(s)] = dict(
                 skills=[k for k in skills.SKILLS if k in set(chosen or [])],
-                auto=[x["key"] for x in ss["scores"] if x["main"]][:3],          # что предложил тренер
+                auto=label_view(s)["auto"],                                      # что предложил тренер
                 formula=[x["key"] for x in ss["scores"] if x["formula"]][:3],    # что видят одни формулы
                 known=list(skills.SKILLS),                                       # из чего выбирал
                 farm=bool(farm), id=pid, ts=time.time(), title=s["title"], artist=s["artist"], diff=s["diff"], bid=s["bid"],
@@ -1208,7 +1216,7 @@ def pick_maps(lad, step, stars, exclude, count, log):
     params = dict(skill=lad["skill"], stars="%.2f-%.2f" % stars, count=count * 4, pool=300, depth=250,
                   crowd_weight=0.5, per_set=1, status="ranked,loved", lang="ru", min_score=25, dry_run=True)
     a = trainer.coerce_params(params)
-    a.metric_filter = lambda m: meets(lad, m) and in_step(lad, step, param_value(lad, m)) and not is_farm(m)
+    a.metric_filter = lambda m, c: meets(lad, m) and in_step(lad, step, param_value(lad, m)) and not is_farm(m, c)
     a.exclude_md5 = set(exclude)
     a.adjust = personal_adjust
     trainer.prepare(a)
@@ -1472,7 +1480,7 @@ def farm_pick(exclude, log, popular=False):
                 continue
             if popular:
                 res.update(popular=True, why="%s | игр на osu!: %s" % (res["why"], trainer.number(res["playcount"])))
-            fs, like = farm_score(res["metrics"])
+            fs, like = farm_score(res["metrics"], res)
             if fs >= 0.5:
                 log("  похожа на твою фарм-карту «%s»" % like)
                 return key, res, False
@@ -1515,7 +1523,7 @@ def popular_pick(key, index, stars, c, exclude, log, target=None):
             res = trainer.score_candidate(cand, scorer, a)
             if not res or res["score"] < cfg["min_score"]:
                 continue
-            fs, like = farm_score(res["metrics"])
+            fs, like = farm_score(res["metrics"], res)
             if fs >= 0.5:
                 log("  %s — похожа на твою фарм-карту «%s», пропускаю" % (res["title"], like))
                 continue
@@ -1577,7 +1585,7 @@ def random_pick(skill, exclude, log, steps=None, popular=False):
             res = trainer.score_candidate(cand, scorer, a)
             if not res or res["score"] < cfg["min_score"]:
                 continue
-            fs, like = farm_score(res["metrics"])
+            fs, like = farm_score(res["metrics"], res)
             if fs >= 0.5:
                 log("  %s — похожа на твою фарм-карту «%s», пропускаю" % (res["title"], like))
                 continue
@@ -1858,7 +1866,7 @@ def _warm_skills(cands, limit=150):
     for x in cands[:limit]:
         m = map_metrics(x["fileHash"])
         if m:
-            ss = skill_scores(m)
+            ss = skill_scores(m, x)
             out.append(dict(x, bpm=round(m["bpm"]), skills={y["key"]: y["score"] for y in ss},
                             kind=[y["title"] for y in ss if y["main"]][:2]))
     return out

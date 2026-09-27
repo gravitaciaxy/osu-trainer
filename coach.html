@@ -930,7 +930,8 @@ function renderAsk(){
     '<button class="iconbtn" onclick="closeAsk()">Закрыть</button></div>' +
     '<p>Тренер думает: <b>' + (v.auto.length ? v.auto.map(k => esc(name(k))).join(', ') : 'смешанная — ни один навык не выражен') + '</b>' +
     (v.mods_name ? ' <span class="muted">(с модами ' + esc(v.mods_name) + ')</span>' : '') + '.</p>' +
-    '<p class="muted">Если не так — отметь навыки, на которые карта на самом деле. Похожим картам отметка сдвинет оценки навыков: и в разборе, и в подборе.</p>' +
+    '<p class="muted">Если не так — отметь навыки, на которые карта на самом деле. Отметка — только для этой сложности, [' + esc(v.diff) + ']' +
+    (v.mods_name ? ' с модами ' + esc(v.mods_name) : '') + ': другие сложности карты она не трогает. Похожим картам отметка сдвинет оценки навыков: и в разборе, и в подборе.</p>' +
     '<div class="chips">' + v.scores.map(x => '<button class="chip' + (ASKSEL.has(x.key) ? ' on' : '') + '" title="' + esc(x.why + (x.like ? ' · поправлено по твоей отметке «' + x.like + '»' : '')) +
       '" onclick="toggleAsk(\'' + x.key + '\')">' + esc(x.title) + ' <small>' + x.score + '</small></button>').join('') + '</div>' +
     '<div class="chips"><button class="chip farm' + (ASKFARM ? ' on' : '') + '" onclick="ASKFARM=!ASKFARM;renderAsk()">Фарм-карта</button>' +
@@ -1109,9 +1110,10 @@ function labelsCard(lb){
   const same = (a, b) => a.length === b.length && a.every(x => b.includes(x));
   let h = '<div class="card"><h2>Отметки навыков</h2>';
   if (lb.n){
-    h += '<p>Отмечено карт: <b>' + lb.n + '</b>, формулы подбора увидели их так же на ' + lb.agree + ' (' + pct(lb.agree / lb.n, 0) + '). ' +
+    h += '<p>Отмечено сложностей: <b>' + lb.n + '</b>, формулы подбора увидели их так же на ' + lb.agree + ' (' + pct(lb.agree / lb.n, 0) + '). ' +
       'По отметкам подбор меняется везде — в подсказках тренера, случайных картах, тренировках, «Подборе карт» и на сайте, для всех: ' +
-      'похожим картам сдвигаются оценки навыков, а где формула систематически видит навык не там, где ты, сдвигается её порог.</p>';
+      'похожим картам сдвигаются оценки навыков, а где формула систематически видит навык не там, где ты, сдвигается её порог. ' +
+      'Отметка — про одну сложность: другие сложности той же карты она не трогает.</p>';
     if (lb.calibration.length) h += '<h3>Пороги навыков по отметкам</h3><ul class="plain">' + lb.calibration.map(c => '<li><b>' + esc(c.title) + '</b>: ' +
       (c.shift > 0 ? '+' : '') + num(c.shift, 1) + ' к оценке для всех карт <span class="muted">(по ' + c.n + ' отметкам около порога, совпадение ' + pct(c.agree, 0) + ')</span></li>').join('') + '</ul>';
     if (lb.skills.some(p => p.extra + p.missed))
@@ -1120,7 +1122,7 @@ function labelsCard(lb){
           '<td class="num ' + (p.missed ? 'bad' : '') + '">' + p.missed + '</td></tr>').join('') + '</table></div>';
     if (lb.farm.length) h += '<p>Фарм-карт отмечено: <b>' + lb.farm.length + '</b> — похожие на них подбор даёт, только когда просишь фарм ' +
       '(в случайной карте — «фарм-карты», в «Подборе карт» — «только фарм»).</p>';
-    h += '<h3>Последние отметки</h3><ul class="plain">' + lb.recent.map(x => '<li><a href="#" onclick="openPlay(\'' + x.id + '\');return false">' + esc(x.artist) + ' — ' + esc(x.title) + '</a> ' +
+    h += '<h3>Последние отметки</h3><ul class="plain">' + lb.recent.map(x => '<li><a href="#" onclick="openPlay(\'' + x.id + '\');return false">' + mapName(x) + '</a> ' +
       (x.mods ? '<span class="badge mod">' + esc(x.mods) + '</span> ' : '') + (x.farm ? '<span class="badge warn">фарм</span> ' : '') +
       '— ' + (x.skills.length ? x.skills.map(esc).join(', ') : 'смешанная') +
       (same(x.skills, x.formula) ? '' : ' <span class="muted">(формулы: ' + (x.formula.length ? x.formula.map(esc).join(', ') : 'смешанная') + ')</span>') + '</li>').join('') + '</ul>';

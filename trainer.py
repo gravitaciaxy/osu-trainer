@@ -355,11 +355,11 @@ def crowd_booster(index, keys, cfgs, co, lang):
 
 def make_scorer(cfgs, profile, a, boost=None):
     sim = skills.profile_scorer(profile) if profile else None
-    adjust = getattr(a, "adjust", None)     # тренер (только локально): поправки по отметкам навыков игрока
+    adjust = getattr(a, "adjust", None)     # поправки по отметкам навыков автора: (cfg, m, s, why, кандидат)
 
-    def skill_score(cfg, m):
+    def skill_score(cfg, m, c):
         s, why = cfg["score"](m)
-        return adjust(cfg, m, s, why) if adjust else (s, why)
+        return adjust(cfg, m, s, why, c) if adjust else (s, why)
 
     def scorer(m, c):
         parts, whys, extra = [], [], {}
@@ -368,7 +368,7 @@ def make_scorer(cfgs, profile, a, boost=None):
             parts.append((s_sim, a.like_weight))
             whys.append(why)
         if cfgs:
-            best = max((skill_score(cfg, m) for cfg in cfgs), key=lambda r: r[0])
+            best = max((skill_score(cfg, m, c) for cfg in cfgs), key=lambda r: r[0])
             parts.append((best[0], 1.0 - (a.like_weight if sim else 0.0)))
             whys.append(best[1])
         total = sum(v * w for v, w in parts) / sum(w for _w, w in parts)
@@ -401,8 +401,8 @@ def score_candidate(c, scorer, a):
         if a.stream_bpm[0] is not None:
             if not (a.stream_bpm[0] <= m["stream_bpm"] <= a.stream_bpm[1]):
                 return None
-        accept = getattr(a, "metric_filter", None)      # ступень лестницы тренера
-        if accept and not accept(m):
+        accept = getattr(a, "metric_filter", None)      # ступень лестницы тренера, фарм: (m, кандидат)
+        if accept and not accept(m, c):
             return None
         score, why, extra = scorer(m, c)
         out = dict(c)

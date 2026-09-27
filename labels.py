@@ -2,7 +2,7 @@
 """
 Отметки навыков карт как поправка к формулам подбора - в тренере, в программе и на сайте.
 
-Отметка - к каким навыкам карта (такой, какой её сыграли) относится на самом деле и не фарм ли это.
+Отметка - к каким навыкам сложность (такой, какой её сыграли) относится на самом деле и не фарм ли это.
 Отметки ставит автор в тренере; обезличенная копия (без попыток, точности и времени) уходит на сайт,
 а программы без тренера берут её оттуда. По отметкам подбор меняется так:
   1. порог навыка: если формула систематически видит навык не там, где отметки, её оценки этого навыка
@@ -10,6 +10,8 @@
   2. похожие карты: где формула ошиблась на похожей отмеченной карте, похожим картам оценка сдвигается
      так, чтобы формула увидела их так же (с запасом), - чем похожее, тем сильнее;
   3. фарм: похожие на отмеченные фарм-карты подбор даёт только по просьбе («только фарм-карты»).
+Отметка - про одну сложность: другие сложности той же карты (набора) она не трогает ни в 2, ни в 3. У них
+тот же BPM, длина и ритм песни, поэтому по метрикам они «похожие», хотя навыки у сложностей бывают разные.
 """
 import hashlib
 import json
@@ -58,6 +60,19 @@ def known(e):
     return set(k) if k else {s for s in skills.SKILLS if s not in NEW_SKILLS}
 
 
+def _num(v):
+    try:
+        return int(v or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def map_name(e):
+    """Как назвать отмеченную карту: название и сложность - отметка ведь про одну сложность."""
+    title, diff = str(e.get("title") or ""), str(e.get("diff") or "")
+    return "%s [%s]" % (title, diff) if diff else title
+
+
 def raw_scores(m):
     out = {}
     for key, cfg in skills.SKILLS.items():
@@ -77,8 +92,24 @@ def distance(a, b):
     return math.sqrt(num / den)
 
 
+def same_mods(a, b):
+    """Метрики одной сложности с одними модами: DT/HT меняют BPM, HR/EZ/DA - CS, AR и OD. HD метрик не меняет."""
+    return all(abs(a.get(k, 0) - b.get(k, 0)) <= tol for k, tol in (("bpm", 0.5), ("cs", 0.05), ("ar", 0.05), ("od", 0.05)))
+
+
+def says(it, key, m):
+    """Говорит ли отметка что-то о навыке карты m: навык был в выборе, а отметка чтения с HD о карте без HD
+    ничего не говорит (и наоборот)."""
+    return key in it["known"] and not (key == "reading" and bool(m.get("hidden")) != bool(it["m"].get("hidden")))
+
+
 class Model:
-    """Поправки подбора по набору отметок. Потокобезопасна: подбор оценивает карты в нескольких потоках."""
+    """Поправки подбора по набору отметок. Потокобезопасна: подбор оценивает карты в нескольких потоках.
+
+    bm в методах - какая это карта: попытка, кандидат подбора или карта библиотеки (dict с sid и bid).
+    С ним отметка этой самой сложности (с теми же модами) решает за неё сама, а отметки других сложностей
+    той же карты не в счёт; без bm - все отметки как похожие карты. own=False - что видит подбор без
+    отметок этой сложности (что думает тренер, пока ты не поправил)."""
 
     def __init__(self, entries=()):
         self.items = []
@@ -86,7 +117,8 @@ class Model:
             m = e.get("metrics") if isinstance(e, dict) else None
             if isinstance(m, dict):
                 self.items.append(dict(m=m, skills=set(e.get("skills") or ()), known=known(e), farm=bool(e.get("farm")),
-                                       title=str(e.get("title") or ""), scores=raw_scores(m)))
+                                       title=map_name(e), sid=_num(e.get("sid")), bid=_num(e.get("bid")),
+                                       scores=raw_scores(m)))
         self.farm = any(it["farm"] for it in self.items)
         self.calibration = self._calibrate()
         self.shift = {k: v["shift"] for k, v in self.calibration.items()}
@@ -119,33 +151,51 @@ class Model:
                 out[key] = dict(shift=round(shift, 1), n=len(pts), agree=round(best[0] / 2, 3))
         return out
 
-    def _dists(self, m):
-        """Расстояния до отмеченных карт - один раз на карту: подбор спрашивает о ней по каждому навыку и о фарме."""
+    def _about(self, m, bm=None, own=True):
+        """Отметки о карте m: (отметка этой самой сложности с теми же модами или None, [(расстояние, отметка)]).
+        Расстояния считаются один раз на карту: подбор спрашивает о ней по каждому навыку и о фарме."""
         c = getattr(self._local, "d", None)
         if c is not None and c[0] is m:
-            return c[1]
-        ds = [(distance(m, it["m"]), it) for it in self.items]
-        self._local.d = (m, ds)
-        return ds
+            ds = c[1]
+        else:
+            ds = [(distance(m, it["m"]), it) for it in self.items]
+            self._local.d = (m, ds)
+        sid, bid = (_num(bm.get("sid")), _num(bm.get("bid"))) if bm else (0, 0)
+        if sid > 0:                     # другие сложности той же карты
+            ds = [(d, it) for d, it in ds if it["sid"] != sid or it["bid"] == bid]
+        if bid > 0 and not own:
+            ds = [(d, it) for d, it in ds if it["bid"] != bid]
+        same = [it for _d, it in ds if bid > 0 and it["bid"] == bid and same_mods(m, it["m"])]
+        # отметки с HD и без HD - об одних метриках: ближе та, где HD так же
+        return min(same, key=lambda it: bool(m.get("hidden")) != bool(it["m"].get("hidden")), default=None), ds
 
-    def deltas(self, m, keys=None):
-        """Сдвиги оценок навыков карты: {навык: (сдвиг, похожая отмеченная карта или None)} - порог навыка
-        по отметкам плюс поправка по похожим картам, где формула на них ошиблась."""
+    def deltas(self, m, keys=None, bm=None, own=True):
+        """Сдвиги оценок навыков карты: {навык: (сдвиг, отмеченная карта или None, её bid)}. По навыкам из
+        отметки этой самой сложности решает она: оценка по нужную сторону порога с запасом. Остальное - порог
+        навыка по отметкам плюс поправка по похожим картам, где формула на них ошиблась."""
         if not self.items or not m:
             return {}
-        near = [(math.exp(-(d / KNN_SIGMA) ** 2), it) for d, it in self._dists(m)]
+        mine, ds = self._about(m, bm, own)
+        near = [(math.exp(-(d / KNN_SIGMA) ** 2), it) for d, it in ds]
         near = [(w, it) for w, it in near if w >= 0.05]
         out = {}
         for key in keys or skills.SKILLS:
             mn = skills.SKILLS[key]["min_score"]
             sh = self.shift.get(key, 0.0)
+            if mine and says(mine, key, m):
+                raw, yes = mine["scores"].get(key, 0.0), key in mine["skills"]
+                if yes == (raw + sh >= mn):
+                    d, like = sh, None          # формула с порогом по отметкам видит её так же
+                else:
+                    d, like = (mn + KNN_MARGIN if yes else mn - KNN_MARGIN) - raw, mine
+                if abs(d) >= 1:
+                    out[key] = (d, like and like["title"], like and like["bid"])
+                continue
             num = den = 0.0
             best = None
             for w, it in near:
-                if key not in it["known"]:
+                if not says(it, key, m):
                     continue            # в этой отметке про навык ничего не сказано
-                if key == "reading" and bool(m.get("hidden")) != bool(it["m"].get("hidden")):
-                    continue            # отметка чтения с HD о карте без HD ничего не говорит (и наоборот)
                 s = it["scores"].get(key, 0.0) + sh
                 if (key in it["skills"]) == (s >= mn):
                     target = s          # формула видит эту карту так же, как отметка
@@ -154,30 +204,38 @@ class Model:
                 num += w * (target - s)
                 den += w
                 if target != s and (best is None or w > best[0]):
-                    best = (w, it["title"])
+                    best = (w, it)
             knn = num / (den + KNN_SHRINK) if best else 0.0
             if abs(sh + knn) >= 1:
-                out[key] = (sh + knn, best[1] if best and abs(knn) >= 1 else None)
+                like = best[1] if best and abs(knn) >= 1 else None
+                out[key] = (sh + knn, like and like["title"], like and like["bid"])
         return out
 
-    def adjust(self, cfg, m, s, why):
+    def adjust(self, cfg, m, s, why, bm=None):
         """Хук подбора (a.adjust в trainer.make_scorer): оценка навыка с поправкой по отметкам."""
         key = next((k for k, v in skills.SKILLS.items() if v is cfg), None)
-        d = self.deltas(m, [key]).get(key) if key else None
+        d = self.deltas(m, [key], bm).get(key) if key else None
         if not d:
             return s, why
-        note = (_("по отметкам автора: %+.0f (похожа на «%s»)", d[0], d[1]) if d[1]
-                else _("по отметкам автора: %+.0f (порог навыка)", d[0]))
+        if d[1] and bm and d[2] and d[2] == _num(bm.get("bid")):
+            note = _("по отметкам автора: %+.0f (отмечена эта сложность)", d[0])
+        elif d[1]:
+            note = _("по отметкам автора: %+.0f (похожа на «%s»)", d[0], d[1])
+        else:
+            note = _("по отметкам автора: %+.0f (порог навыка)", d[0])
         return max(0.0, min(100.0, s + d[0])), "%s · %s" % (why, note)
 
-    def farm_score(self, m):
+    def farm_score(self, m, bm=None, own=True):
         """Насколько карта похожа на отмеченные фарм-карты: (доля фарма среди похожих отметок 0..1, самая
-        похожая фарм-карта). Похожие отметки «не фарм» долю разбавляют."""
+        похожая фарм-карта). Похожие отметки «не фарм» долю разбавляют; отметка этой самой сложности решает сама."""
         if not self.farm or not m:
             return 0.0, None
+        mine, ds = self._about(m, bm, own)
+        if mine:
+            return (1.0, mine["title"]) if mine["farm"] else (0.0, None)
         num = den = 0.0
         best = None
-        for d, it in self._dists(m):
+        for d, it in ds:
             w = math.exp(-(d / FARM_SIGMA) ** 2)
             if w < 0.05:
                 continue
@@ -188,16 +246,17 @@ class Model:
                     best = (w, it["title"])
         return (num / (den + KNN_SHRINK), best[1]) if best else (0.0, None)
 
-    def is_farm(self, m):
-        return self.farm_score(m)[0] >= 0.5
+    def is_farm(self, m, bm=None):
+        return self.farm_score(m, bm)[0] >= 0.5
 
     def farm_filter(self, mode):
-        """Фильтр метрик для подбора: похожие на фарм-карты - только по просьбе (mode "only")."""
+        """Фильтр подбора (a.metric_filter - метрики и кандидат): похожие на фарм-карты - только по просьбе
+        (mode "only")."""
         if mode == "only":
             if not self.farm:
                 raise RuntimeError(_("Фарм-карт пока не отмечено"))
             return self.is_farm
-        return (lambda m: not self.is_farm(m)) if self.farm else None
+        return (lambda m, bm=None: not self.is_farm(m, bm)) if self.farm else None
 
 
 # ----------------------------------------------------- обезличенная копия ----
